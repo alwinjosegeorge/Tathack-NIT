@@ -180,7 +180,7 @@ function CitizenPortalPage() {
   }, [mission.distanceToNextJunctionM, mission.nextJunction, alertsEnabled, dismissedJunctions]);
 
   return (
-    <div className="min-h-screen bg-[#f4f7f6] text-slate-800 font-sans selection:bg-primary selection:text-primary-foreground flex flex-col">
+    <div className="min-h-screen bg-[#f9f8f6] text-slate-800 font-sans selection:bg-primary selection:text-primary-foreground flex flex-col">
       {/* Header Bar */}
       <header className="sticky top-0 w-full py-3.5 px-4 md:px-8 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl flex justify-between items-center z-45 shrink-0 shadow-xs">
         <div className="flex items-center gap-6 lg:gap-8">
