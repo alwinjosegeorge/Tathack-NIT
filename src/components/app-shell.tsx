@@ -21,6 +21,7 @@ import {
   SlidersHorizontal,
   HeartPulse,
   Mic,
+  Scan,
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
@@ -93,6 +94,7 @@ const stages: Stage[] = [
 ];
 
 const advanced: Stage["children"] = [
+  { to: "/machine-sight", label: "Machine Sight", icon: Scan },
   { to: "/replay", label: "City Replay", icon: Rewind },
 ];
 
@@ -104,7 +106,9 @@ function useActiveKey() {
       return { stage: s.key, path: pathname };
     }
   }
-  if (pathname.startsWith("/replay")) return { stage: "advanced", path: pathname };
+  if (pathname.startsWith("/replay") || pathname.startsWith("/machine-sight")) {
+    return { stage: "advanced", path: pathname };
+  }
   return { stage: "dashboard", path: pathname };
 }
 

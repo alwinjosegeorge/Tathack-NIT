@@ -15,6 +15,7 @@ import { Route as CctvRouteImport } from './routes/cctv'
 import { Route as CitizenRouteImport } from './routes/citizen'
 import { Route as CopilotRouteImport } from './routes/copilot'
 import { Route as HospitalRouteImport } from './routes/hospital'
+import { Route as MachineSightRouteImport } from './routes/machine-sight'
 import { Route as MapRouteImport } from './routes/map'
 import { Route as ReplayRouteImport } from './routes/replay'
 import { Route as ReportsRouteImport } from './routes/reports'
@@ -53,6 +54,11 @@ const CopilotRoute = CopilotRouteImport.update({
 const HospitalRoute = HospitalRouteImport.update({
   id: '/hospital',
   path: '/hospital',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MachineSightRoute = MachineSightRouteImport.update({
+  id: '/machine-sight',
+  path: '/machine-sight',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MapRoute = MapRouteImport.update({
@@ -108,6 +114,7 @@ export interface FileRoutesByFullPath {
   '/citizen': typeof CitizenRoute
   '/copilot': typeof CopilotRoute
   '/hospital': typeof HospitalRoute
+  '/machine-sight': typeof MachineSightRoute
   '/map': typeof MapRoute
   '/replay': typeof ReplayRoute
   '/reports': typeof ReportsRouteWithChildren
@@ -125,6 +132,7 @@ export interface FileRoutesByTo {
   '/citizen': typeof CitizenRoute
   '/copilot': typeof CopilotRoute
   '/hospital': typeof HospitalRoute
+  '/machine-sight': typeof MachineSightRoute
   '/map': typeof MapRoute
   '/replay': typeof ReplayRoute
   '/reports': typeof ReportsRouteWithChildren
@@ -143,6 +151,7 @@ export interface FileRoutesById {
   '/citizen': typeof CitizenRoute
   '/copilot': typeof CopilotRoute
   '/hospital': typeof HospitalRoute
+  '/machine-sight': typeof MachineSightRoute
   '/map': typeof MapRoute
   '/replay': typeof ReplayRoute
   '/reports': typeof ReportsRouteWithChildren
@@ -162,6 +171,7 @@ export interface FileRouteTypes {
     | '/citizen'
     | '/copilot'
     | '/hospital'
+    | '/machine-sight'
     | '/map'
     | '/replay'
     | '/reports'
@@ -179,6 +189,7 @@ export interface FileRouteTypes {
     | '/citizen'
     | '/copilot'
     | '/hospital'
+    | '/machine-sight'
     | '/map'
     | '/replay'
     | '/reports'
@@ -196,6 +207,7 @@ export interface FileRouteTypes {
     | '/citizen'
     | '/copilot'
     | '/hospital'
+    | '/machine-sight'
     | '/map'
     | '/replay'
     | '/reports'
@@ -214,6 +226,7 @@ export interface RootRouteChildren {
   CitizenRoute: typeof CitizenRoute
   CopilotRoute: typeof CopilotRoute
   HospitalRoute: typeof HospitalRoute
+  MachineSightRoute: typeof MachineSightRoute
   MapRoute: typeof MapRoute
   ReplayRoute: typeof ReplayRoute
   ReportsRoute: typeof ReportsRouteWithChildren
@@ -266,6 +279,13 @@ declare module '@tanstack/react-router' {
       path: '/hospital'
       fullPath: '/hospital'
       preLoaderRoute: typeof HospitalRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/machine-sight': {
+      id: '/machine-sight'
+      path: '/machine-sight'
+      fullPath: '/machine-sight'
+      preLoaderRoute: typeof MachineSightRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/map': {
@@ -352,6 +372,7 @@ const rootRouteChildren: RootRouteChildren = {
   CitizenRoute: CitizenRoute,
   CopilotRoute: CopilotRoute,
   HospitalRoute: HospitalRoute,
+  MachineSightRoute: MachineSightRoute,
   MapRoute: MapRoute,
   ReplayRoute: ReplayRoute,
   ReportsRoute: ReportsRouteWithChildren,
