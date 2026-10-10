@@ -39,14 +39,18 @@ export function FullCityScene({
     };
 
     return {
-      ground: createMat(0, "#eceae6", "#09101d"),
-      road: createMat(1, "#dad7d2", "#1e293b"),
-      sidewalk: createMat(2, "#e4e1dc", "#334155"),
-      building: createMat(3, "#ffffff", "#273549"),
-      park: createMat(0, "#d8e2dc", "#064e3b"),
-      water: createMat(0, "#ccd8e0", "#0284c7"),
-      tree: createMat(3, "#d5ded9", "#10b981"),
-      hospital: createMat(3, "#ffffff", "#dc2626"),
+      ground: createMat(0, "#2d5a27", "#09101d"),
+      road: createMat(1, "#1e222a", "#1e293b"),
+      sidewalk: createMat(2, "#94a3b8", "#334155"),
+      building: createMat(3, "#d97706", "#273549"),
+      buildingGlass: createMat(3, "#0284c7", "#0284c7"),
+      buildingTerracotta: createMat(3, "#c2410c", "#c2410c"),
+      buildingSandstone: createMat(3, "#d4a373", "#d4a373"),
+      buildingSlate: createMat(3, "#475569", "#475569"),
+      park: createMat(0, "#16a34a", "#064e3b"),
+      water: createMat(0, "#0284c7", "#0284c7"),
+      tree: createMat(7, "#15803d", "#10b981"),
+      hospital: createMat(3, "#f8fafc", "#dc2626"),
     };
   }, [zoneRadius, sensorMode]);
 
@@ -138,26 +142,41 @@ export function FullCityScene({
       ))}
 
       {/* 6. Procedural Buildings (Towers, Mid-Rise, Low Blocks, Hospital) */}
-      {cityData.buildings.map((b) => (
-        <mesh
-          key={b.id}
-          position={b.pos}
-          material={b.type === "hospital" ? shaderMaterials.hospital : shaderMaterials.building}
-          castShadow={!lowQuality}
-          receiveShadow={!lowQuality}
-        >
-          <boxGeometry args={b.size} />
-        </mesh>
-      ))}
+      {cityData.buildings.map((b, idx) => {
+        let bMat = shaderMaterials.building;
+        if (b.type === "hospital") {
+          bMat = shaderMaterials.hospital;
+        } else if (idx % 4 === 0) {
+          bMat = shaderMaterials.buildingGlass;
+        } else if (idx % 4 === 1) {
+          bMat = shaderMaterials.buildingTerracotta;
+        } else if (idx % 4 === 2) {
+          bMat = shaderMaterials.buildingSandstone;
+        } else {
+          bMat = shaderMaterials.buildingSlate;
+        }
 
-      {/* 7. Minimalist Trees */}
+        return (
+          <mesh
+            key={b.id}
+            position={b.pos}
+            material={bMat}
+            castShadow={!lowQuality}
+            receiveShadow={!lowQuality}
+          >
+            <boxGeometry args={b.size} />
+          </mesh>
+        );
+      })}
+
+      {/* 7. Lush Tropical Trees */}
       {!lowQuality &&
         cityData.trees.slice(0, 160).map((tPos, i) => (
           <group key={`tree-${i}`} position={tPos}>
             {/* Trunk */}
             <mesh position={[0, 0.5, 0]}>
               <cylinderGeometry args={[0.2, 0.25, 1.2, 6]} />
-              <meshStandardMaterial color="#94a3b8" />
+              <meshStandardMaterial color="#78350f" roughness={0.9} />
             </mesh>
             {/* Foliage */}
             <mesh position={[0, 1.8, 0]} material={shaderMaterials.tree}>

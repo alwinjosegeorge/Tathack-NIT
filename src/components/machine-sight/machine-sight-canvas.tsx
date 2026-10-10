@@ -10,8 +10,6 @@ import { FullCityTrafficEngine } from "@/lib/sim/full-city-traffic";
 import { FullCityScene } from "./full-city-scene";
 import { FullCityVehicles } from "./full-city-vehicles";
 import { SensorCorridorRibbon } from "./sensor-corridor-ribbon";
-import { VisionZoneRing } from "./vision-zone-ring";
-import { LidarPoints } from "./lidar-points";
 import { PerceptionAgent, extractPerceptionState } from "@/lib/sim/perception";
 
 export type CameraViewMode = "overview" | "follow_ambulance" | "track_agent";
@@ -87,13 +85,25 @@ export function MachineSightCanvas({
         gl={{ antialias: true, powerPreference: "high-performance" }}
         onPointerMissed={() => onSelectAgent(null)}
       >
-        {/* Sky / Clay Fog */}
-        <color attach="background" args={["#eceae6"]} />
-        <fog attach="fog" args={["#eceae6", 350, 900]} />
+        {/* Sunny Atmospheric Sky and Soft Blue Horizon */}
+        <color attach="background" args={["#87ceeb"]} />
+        <fog attach="fog" args={["#bfe3f7", 380, 1100]} />
 
-        {/* Ambient & Directional Sun for Soft Clay Shadows */}
-        <ambientLight intensity={0.75} />
-        <directionalLight position={[120, 240, 90]} intensity={1.1} castShadow={!lowQuality} />
+        {/* Ambient, Hemisphere & Warm Directional Sunlight */}
+        <ambientLight intensity={0.7} color="#e0f2fe" />
+        <hemisphereLight args={['#87ceeb', '#15803d', 0.6]} />
+        <directionalLight
+          position={[140, 260, 100]}
+          intensity={1.8}
+          castShadow={!lowQuality}
+          color="#fffbeb"
+          shadow-mapSize-width={2048}
+          shadow-mapSize-height={2048}
+          shadow-camera-left={-300}
+          shadow-camera-right={300}
+          shadow-camera-top={300}
+          shadow-camera-bottom={-300}
+        />
 
         {/* 60Hz Physics, Traffic, and Multi-Sensor Extraction */}
         <FullCityPhysicsEngine
@@ -110,13 +120,6 @@ export function MachineSightCanvas({
             onAgentsUpdate(agts, amb, closeCalls);
           }}
           onFps={onFpsUpdate}
-        />
-
-        {/* Ground Raycast Plane for Cursor Tracking */}
-        <GroundRaycastPlane
-          onCursorMove={(x, z) => {
-            cursorWorldPos.current = [x, z];
-          }}
         />
 
         {/* 1. Full 16x16 Procedural City Scene */}
@@ -150,25 +153,6 @@ export function MachineSightCanvas({
           isSelected={selectedAgentId === "ambulance-lead"}
           onSelect={() => onSelectAgent("ambulance-lead")}
         />
-
-        {/* 5. Vision Zone Perimeter Ring & Concentric Scan Waves */}
-        <VisionZoneRing
-          zoneCenter={zoneCenter}
-          zoneRadius={zoneRadius}
-          sensorMode={modeIdx}
-          isLockedToAmbulance={isLockedToAmbulance || shiftHeld}
-        />
-
-        {/* 6. Dense LIDAR Instanced Points in Zone */}
-        {modeIdx === 0 && (
-          <LidarPoints
-            simRef={simRef}
-            zoneCenter={zoneCenter}
-            zoneRadius={zoneRadius}
-            sensorMode={modeIdx}
-            lowQuality={lowQuality}
-          />
-        )}
 
         {/* 7. Camera Director (Overview / Follow Ambulance / Track Agent) */}
         <CameraDirector
@@ -240,15 +224,10 @@ function FullCityPhysicsEngine({
       trafficEngine.step(dt, [smoothedZoneCenter.current.x, smoothedZoneCenter.current.y], zoneRadius, [amb.x, amb.z]);
     }
 
-    // 3. Compute target zone center (Cursor by default, or Ambulance on Shift/Lock)
+    // 3. Compute target zone center (Centered dynamically on lead emergency vehicle)
     const amb = simRef.current.vehicle;
-    let targetX = cursorWorldPos.current ? cursorWorldPos.current[0] : amb.x;
-    let targetZ = cursorWorldPos.current ? cursorWorldPos.current[1] : amb.z;
-
-    if (shiftHeld || isLockedToAmbulance) {
-      targetX = amb.x;
-      targetZ = amb.z;
-    }
+    const targetX = amb.x;
+    const targetZ = amb.z;
 
     // Smooth lerp on zone movement
     smoothedZoneCenter.current.lerp(new THREE.Vector2(targetX, targetZ), delta * 6.0);
@@ -273,23 +252,7 @@ function FullCityPhysicsEngine({
 }
 
 // Raycast ground plane to get mouse world coordinates
-function GroundRaycastPlane({ onCursorMove }: { onCursorMove: (x: number, z: number) => void }) {
-  return (
-    <mesh
-      rotation={[-Math.PI / 2, 0, 0]}
-      position={[0, 0, 0]}
-      visible={false}
-      onPointerMove={(e) => {
-        onCursorMove(e.point.x, e.point.z);
-      }}
-    >
-      <planeGeometry args={[2000, 2000]} />
-      <meshBasicMaterial />
-    </mesh>
-  );
-}
-
-// Emergency Lead Ambulance Mesh
+// High-Detail Emergency Lead Ambulance with Vibrant Livery, Flashing Lightbar & Headlights
 function EmergencyAmbulanceLeadMesh({
   simRef,
   sensorMode,
@@ -304,54 +267,137 @@ function EmergencyAmbulanceLeadMesh({
   const groupRef = useRef<THREE.Group>(null);
   const redLightRef = useRef<THREE.MeshBasicMaterial>(null);
   const blueLightRef = useRef<THREE.MeshBasicMaterial>(null);
+  const strobeRef = useRef<THREE.MeshBasicMaterial>(null);
 
   useFrame((state) => {
     if (!simRef.current || !groupRef.current) return;
     const v = simRef.current.vehicle;
-    groupRef.current.position.set(v.x, 0.8, v.z);
+    groupRef.current.position.set(v.x, 0.7, v.z);
     groupRef.current.rotation.y = -v.heading + Math.PI / 2;
     groupRef.current.rotation.z = v.roll;
 
-    const t = state.clock.getElapsedTime() * 12;
+    const t = state.clock.getElapsedTime() * 14;
     const isRed = Math.sin(t) > 0;
+    const isStrobe = Math.sin(t * 2) > 0.5;
     if (redLightRef.current) redLightRef.current.opacity = isRed ? 1.0 : 0.2;
     if (blueLightRef.current) blueLightRef.current.opacity = isRed ? 0.2 : 1.0;
+    if (strobeRef.current) strobeRef.current.opacity = isStrobe ? 1.0 : 0.15;
   });
 
   return (
     <group ref={groupRef} onClick={(e) => { e.stopPropagation(); onSelect(); }}>
-      {/* Ambulance Body */}
-      <mesh position={[0, 0.6, 0]} castShadow>
+      {/* 1. Main White Ambulance Body */}
+      <mesh position={[0, 0.65, 0]} castShadow>
         <boxGeometry args={[4.8, 1.8, 2.0]} />
-        <meshStandardMaterial
-          color={sensorMode === 1 ? "#ea580c" : sensorMode === 0 ? "#0f172a" : "#0d9488"}
-          roughness={0.2}
-        />
+        <meshStandardMaterial color="#ffffff" roughness={0.15} metalness={0.1} />
       </mesh>
 
-      {/* Windshield */}
-      <mesh position={[1.5, 0.7, 0]}>
-        <boxGeometry args={[0.8, 0.9, 1.8]} />
-        <meshStandardMaterial color="#0284c7" roughness={0.1} />
+      {/* 2. Red Emergency Flank Stripes */}
+      <mesh position={[-0.2, 0.65, 1.01]}>
+        <planeGeometry args={[4.4, 0.4]} />
+        <meshBasicMaterial color="#dc2626" />
+      </mesh>
+      <mesh position={[-0.2, 0.65, -1.01]} rotation={[0, Math.PI, 0]}>
+        <planeGeometry args={[4.4, 0.4]} />
+        <meshBasicMaterial color="#dc2626" />
       </mesh>
 
-      {/* Lightbar */}
-      <group position={[0.4, 1.65, 0]}>
-        <mesh position={[0, 0, -0.4]}>
-          <boxGeometry args={[0.3, 0.2, 0.4]} />
+      {/* 3. Red Cross Livery On Sides */}
+      <group position={[-0.6, 0.65, 1.02]}>
+        <mesh>
+          <planeGeometry args={[0.7, 0.22]} />
+          <meshBasicMaterial color="#ef4444" />
+        </mesh>
+        <mesh>
+          <planeGeometry args={[0.22, 0.7]} />
+          <meshBasicMaterial color="#ef4444" />
+        </mesh>
+      </group>
+      <group position={[-0.6, 0.65, -1.02]} rotation={[0, Math.PI, 0]}>
+        <mesh>
+          <planeGeometry args={[0.7, 0.22]} />
+          <meshBasicMaterial color="#ef4444" />
+        </mesh>
+        <mesh>
+          <planeGeometry args={[0.22, 0.7]} />
+          <meshBasicMaterial color="#ef4444" />
+        </mesh>
+      </group>
+
+      {/* 4. Cab Windshield & Windows */}
+      <mesh position={[1.52, 0.75, 0]}>
+        <boxGeometry args={[0.82, 0.85, 1.82]} />
+        <meshStandardMaterial color="#0284c7" roughness={0.1} metalness={0.8} />
+      </mesh>
+
+      {/* 5. Emergency Lightbar on Roof */}
+      <group position={[0.4, 1.68, 0]}>
+        {/* Lightbar Mount */}
+        <mesh position={[0, -0.06, 0]}>
+          <boxGeometry args={[0.4, 0.08, 1.4]} />
+          <meshStandardMaterial color="#334155" />
+        </mesh>
+        {/* Red Beacon */}
+        <mesh position={[0, 0.04, -0.45]}>
+          <boxGeometry args={[0.35, 0.22, 0.45]} />
           <meshBasicMaterial ref={redLightRef} color="#ef4444" transparent />
         </mesh>
-        <mesh position={[0, 0, 0.4]}>
-          <boxGeometry args={[0.3, 0.2, 0.4]} />
+        {/* White Strobe */}
+        <mesh position={[0, 0.04, 0]}>
+          <boxGeometry args={[0.35, 0.2, 0.3]} />
+          <meshBasicMaterial ref={strobeRef} color="#ffffff" transparent />
+        </mesh>
+        {/* Blue Beacon */}
+        <mesh position={[0, 0.04, 0.45]}>
+          <boxGeometry args={[0.35, 0.22, 0.45]} />
           <meshBasicMaterial ref={blueLightRef} color="#3b82f6" transparent />
         </mesh>
       </group>
 
-      {/* Selection Ring */}
+      {/* 6. High-Beam LED Headlights */}
+      <mesh position={[2.42, 0.45, 0.65]}>
+        <boxGeometry args={[0.08, 0.22, 0.35]} />
+        <meshBasicMaterial color="#fef08a" />
+      </mesh>
+      <mesh position={[2.42, 0.45, -0.65]}>
+        <boxGeometry args={[0.08, 0.22, 0.35]} />
+        <meshBasicMaterial color="#fef08a" />
+      </mesh>
+
+      {/* 7. LED Taillights */}
+      <mesh position={[-2.42, 0.5, 0.75]}>
+        <boxGeometry args={[0.08, 0.25, 0.28]} />
+        <meshBasicMaterial color="#ef4444" />
+      </mesh>
+      <mesh position={[-2.42, 0.5, -0.75]}>
+        <boxGeometry args={[0.08, 0.25, 0.28]} />
+        <meshBasicMaterial color="#ef4444" />
+      </mesh>
+
+      {/* 8. 4 Realistic Wheels */}
+      {[
+        [1.4, -0.25, 1.05],
+        [1.4, -0.25, -1.05],
+        [-1.4, -0.25, 1.05],
+        [-1.4, -0.25, -1.05],
+      ].map(([wx, wy, wz], wi) => (
+        <group key={`w-${wi}`} position={[wx, wy, wz]} rotation={[Math.PI / 2, 0, 0]}>
+          <mesh>
+            <cylinderGeometry args={[0.42, 0.42, 0.3, 16]} />
+            <meshStandardMaterial color="#1e293b" roughness={0.8} />
+          </mesh>
+          <mesh position={[0, wz > 0 ? 0.08 : -0.08, 0]}>
+            <cylinderGeometry args={[0.22, 0.22, 0.16, 12]} />
+            <meshStandardMaterial color="#cbd5e1" metalness={0.8} roughness={0.3} />
+          </mesh>
+        </group>
+      ))}
+
+      {/* 9. Glowing Selection Aura */}
       {isSelected && (
-        <mesh position={[0, -0.4, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-          <ringGeometry args={[2.8, 3.2, 32]} />
-          <meshBasicMaterial color="#38bdf8" side={THREE.DoubleSide} />
+        <mesh position={[0, -0.38, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[2.8, 3.4, 36]} />
+          <meshBasicMaterial color="#10b981" side={THREE.DoubleSide} />
         </mesh>
       )}
     </group>

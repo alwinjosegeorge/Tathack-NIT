@@ -146,40 +146,55 @@ export function FullCityVehicles({
           );
         })}
 
-      {/* 3. Screen Tags inside Zone */}
-      {culledTags.map((agent) => (
-        <ScreenAgentTag
-          key={`tag-${agent.id}`}
-          agent={agent}
-          isSelected={selectedAgentId === agent.id}
-          onSelect={() => onSelectAgent(agent.id)}
-        />
-      ))}
+      {/* 3. Screen Tag for Selected Agent only */}
+      {culledTags
+        .filter((a) => a.id === selectedAgentId)
+        .map((agent) => (
+          <ScreenAgentTag
+            key={`tag-${agent.id}`}
+            agent={agent}
+            isSelected={true}
+            onSelect={() => onSelectAgent(agent.id)}
+          />
+        ))}
     </group>
   );
 }
+
+const CAR_COLOR_PALETTE = [
+  "#dc2626", // Red
+  "#2563eb", // Royal Blue
+  "#059669", // Emerald
+  "#d97706", // Amber
+  "#7c3aed", // Violet
+  "#0891b2", // Teal
+  "#1e293b", // Slate Black
+  "#f8fafc", // Pearl White
+  "#ea580c", // Orange
+];
 
 function TrafficCarEntity({
   veh,
   isSelected,
   onSelect,
-  zoneCenter,
-  zoneRadius,
-  sensorMode,
-  material,
   lowQuality,
 }: {
   veh: CityVehicle;
   isSelected: boolean;
   onSelect: () => void;
-  zoneCenter: [number, number];
-  zoneRadius: number;
-  sensorMode: 0 | 1 | 2;
-  material: THREE.Material;
+  zoneCenter?: [number, number];
+  zoneRadius?: number;
+  sensorMode?: 0 | 1 | 2;
+  material?: THREE.Material;
   lowQuality?: boolean;
 }) {
-  const distToCenter = Math.hypot(veh.x - zoneCenter[0], veh.z - zoneCenter[1]);
-  const inZone = distToCenter <= zoneRadius;
+  const carColor = useMemo(() => {
+    if (veh.type === "auto") return "#eab308";
+    if (veh.type === "bus") return "#dc2626";
+    if (veh.color) return veh.color;
+    const idx = Math.abs(veh.id.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0));
+    return CAR_COLOR_PALETTE[idx % CAR_COLOR_PALETTE.length];
+  }, [veh.type, veh.color, veh.id]);
 
   return (
     <group
@@ -190,37 +205,49 @@ function TrafficCarEntity({
         onSelect();
       }}
     >
-      {/* Detailed Low-Poly Car Chassis (Visible in Clay outside, transforms to LIDAR inside) */}
-      <mesh material={material} castShadow={!lowQuality && inZone}>
+      {/* Detailed Low-Poly Car Chassis with vibrant paint */}
+      <mesh castShadow={!lowQuality} receiveShadow={!lowQuality}>
         <boxGeometry args={veh.dimensions} />
+        <meshStandardMaterial color={carColor} metalness={0.5} roughness={0.35} />
       </mesh>
 
       {/* Roof Cabin for Sedans / SUVs */}
       {veh.type === "car" && (
-        <mesh position={[-0.2, veh.dimensions[1] * 0.45, 0]} material={material}>
+        <mesh position={[-0.2, veh.dimensions[1] * 0.45, 0]}>
           <boxGeometry args={[veh.dimensions[0] * 0.52, veh.dimensions[1] * 0.55, veh.dimensions[2] * 0.85]} />
+          <meshStandardMaterial color="#0f172a" metalness={0.7} roughness={0.15} />
         </mesh>
       )}
 
-      {/* 3D Wireframe Bounding Box when inside Vision Zone */}
-      {inZone && (
-        <mesh position={[0, 0, 0]}>
-          <boxGeometry args={[veh.dimensions[0] + 0.35, veh.dimensions[1] + 0.35, veh.dimensions[2] + 0.35]} />
-          <meshBasicMaterial
-            color={isSelected ? "#38bdf8" : sensorMode === 0 ? "#00f0ff" : "#2dd4bf"}
-            wireframe
-            transparent
-            opacity={isSelected ? 0.95 : 0.5}
-          />
-        </mesh>
-      )}
+      {/* Headlights */}
+      <mesh position={[veh.dimensions[0] / 2 + 0.02, 0, 0]}>
+        <boxGeometry args={[0.06, veh.dimensions[1] * 0.3, veh.dimensions[2] * 0.7]} />
+        <meshStandardMaterial color="#fffbe6" emissive="#fffbe6" emissiveIntensity={0.8} toneMapped={false} />
+      </mesh>
 
-      {/* Selection Ring */}
+      {/* Taillights */}
+      <mesh position={[-veh.dimensions[0] / 2 - 0.02, 0, 0]}>
+        <boxGeometry args={[0.06, veh.dimensions[1] * 0.3, veh.dimensions[2] * 0.7]} />
+        <meshStandardMaterial
+          color={veh.stoppedAtRed || veh.isYielding ? "#ff0000" : "#660000"}
+          emissive={veh.stoppedAtRed || veh.isYielding ? "#ff0000" : "#220000"}
+          emissiveIntensity={veh.stoppedAtRed || veh.isYielding ? 1.5 : 0.2}
+          toneMapped={false}
+        />
+      </mesh>
+
+      {/* 3D Wireframe Bounding Box when Selected */}
       {isSelected && (
-        <mesh position={[0, -veh.dimensions[1] / 2 + 0.05, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-          <ringGeometry args={[2.5, 2.8, 32]} />
-          <meshBasicMaterial color="#38bdf8" side={THREE.DoubleSide} />
-        </mesh>
+        <>
+          <mesh position={[0, 0, 0]}>
+            <boxGeometry args={[veh.dimensions[0] + 0.4, veh.dimensions[1] + 0.4, veh.dimensions[2] + 0.4]} />
+            <meshBasicMaterial color="#38bdf8" wireframe transparent opacity={0.9} />
+          </mesh>
+          <mesh position={[0, -veh.dimensions[1] / 2 + 0.05, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+            <ringGeometry args={[2.5, 2.8, 32]} />
+            <meshBasicMaterial color="#38bdf8" side={THREE.DoubleSide} />
+          </mesh>
+        </>
       )}
     </group>
   );

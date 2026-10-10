@@ -1,7 +1,7 @@
-// Floating Agent Inspector Card matching the reference video layout and typography
+// Floating Agent Inspector Card with glowing border aura and dot-pattern-card texture
 import React from "react";
 import { PerceptionAgent } from "@/lib/sim/perception";
-import { X } from "lucide-react";
+import { X, Navigation, Shield, AlertTriangle, Eye } from "lucide-react";
 
 interface AgentInspectorCardProps {
   agent: PerceptionAgent | null;
@@ -15,28 +15,30 @@ export function AgentInspectorCard({ agent, onClose }: AgentInspectorCardProps) 
   const isWait = agent.statusBadge === "WAIT";
 
   return (
-    <div className="pointer-events-auto absolute right-8 top-24 z-40 w-96 overflow-hidden rounded-2xl border border-slate-700/60 bg-white/95 text-slate-900 shadow-2xl backdrop-blur-xl animate-in fade-in zoom-in-95 duration-200 dark:bg-slate-950/95 dark:text-slate-100">
+    <div className="pointer-events-auto absolute right-6 sm:right-8 top-20 sm:top-24 z-40 w-80 sm:w-96 overflow-hidden rounded-3xl border border-indigo-500/35 bg-slate-950/90 text-white shadow-[0_0_40px_-5px_rgba(99,102,241,0.4)] backdrop-blur-2xl dot-pattern-card animate-in fade-in zoom-in-95 duration-200">
       {/* Top Banner with Semantic Status Color */}
       <div
-        className={`relative p-4 transition-colors ${
+        className={`relative p-5 transition-colors border-b ${
           isAlert
-            ? "bg-rose-500 text-white"
+            ? "bg-rose-500/20 border-rose-500/40 text-rose-100"
             : isWait
-            ? "bg-sky-500 text-white"
-            : "bg-emerald-400 text-slate-950 font-medium"
+            ? "bg-sky-500/20 border-sky-500/40 text-sky-100"
+            : "bg-emerald-500/20 border-emerald-500/40 text-emerald-100"
         }`}
       >
         <div className="flex items-center justify-between">
           <span
-            className={`inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[11px] font-mono font-bold uppercase tracking-wider ${
-              isAlert || isWait
-                ? "bg-white/20 text-white"
-                : "bg-slate-950/10 text-slate-950"
+            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-mono font-bold uppercase tracking-wider border ${
+              isAlert
+                ? "bg-rose-500/30 text-rose-200 border-rose-400"
+                : isWait
+                ? "bg-sky-500/30 text-sky-200 border-sky-400"
+                : "bg-emerald-500/30 text-emerald-200 border-emerald-400"
             }`}
           >
             <span
               className={`size-1.5 rounded-full ${
-                isAlert ? "bg-white animate-ping" : isWait ? "bg-white" : "bg-slate-950"
+                isAlert ? "bg-rose-400 animate-ping" : isWait ? "bg-sky-300" : "bg-emerald-300"
               }`}
             />
             {agent.statusBadge}
@@ -44,11 +46,7 @@ export function AgentInspectorCard({ agent, onClose }: AgentInspectorCardProps) 
 
           <button
             onClick={onClose}
-            className={`grid size-6 place-items-center rounded-lg transition ${
-              isAlert || isWait
-                ? "text-white/80 hover:bg-white/20 hover:text-white"
-                : "text-slate-950/70 hover:bg-slate-950/10 hover:text-slate-950"
-            }`}
+            className="grid size-7 place-items-center rounded-full bg-slate-900/60 text-slate-300 hover:text-white hover:bg-slate-800 transition"
             title="Deselect (Esc)"
           >
             <X className="size-4" />
@@ -56,32 +54,35 @@ export function AgentInspectorCard({ agent, onClose }: AgentInspectorCardProps) 
         </div>
 
         {/* Large Headline Title */}
-        <h2 className="mt-2 text-xl font-bold tracking-tight">{agent.headline}</h2>
+        <h2 className="mt-2.5 text-lg sm:text-xl font-bold tracking-tight text-white flex items-center gap-2">
+          <Eye className="size-4 text-indigo-400" />
+          <span>{agent.headline}</span>
+        </h2>
         {/* Descriptive sentence */}
-        <p className={`mt-1 text-xs leading-relaxed ${isAlert || isWait ? "text-white/90" : "text-slate-900/80"}`}>
+        <p className="mt-1 text-xs leading-relaxed text-slate-300">
           {agent.explanation}
         </p>
       </div>
 
       {/* Monospace Data Table */}
-      <div className="space-y-2.5 p-4 font-mono text-[12px] bg-slate-50/50 dark:bg-slate-900/40">
-        <div className="flex items-center justify-between border-b border-slate-200/80 pb-2 dark:border-slate-800/80">
-          <span className="text-slate-400">ID:</span>
-          <span className="font-semibold text-slate-900 dark:text-white">
-            {agent.typeLabel} · <span className="underline decoration-cyan-500">{agent.label}</span>
+      <div className="space-y-2.5 p-5 font-mono text-[12px] bg-slate-950/60">
+        <div className="flex items-center justify-between border-b border-indigo-500/20 pb-2">
+          <span className="text-slate-400">entity id</span>
+          <span className="font-semibold text-white">
+            {agent.typeLabel} · <span className="underline decoration-indigo-400 text-indigo-300">{agent.label}</span>
           </span>
         </div>
 
         <div className="flex items-center justify-between">
-          <span className="text-slate-400">speed:</span>
-          <span className="font-bold text-cyan-600 dark:text-cyan-400">{agent.speedKmh} km/h</span>
+          <span className="text-slate-400">velocity</span>
+          <span className="font-bold text-cyan-400">{agent.speedKmh} km/h</span>
         </div>
 
         <div className="flex items-center justify-between">
-          <span className="text-slate-400">intent:</span>
-          <span className="font-medium text-slate-700 dark:text-slate-300">
+          <span className="text-slate-400">turn intent</span>
+          <span className="font-medium text-slate-200">
             {agent.turnIntent.yielding > 0 ? (
-              <span className="text-amber-500 font-semibold">shoulder yield {agent.turnIntent.yielding}%</span>
+              <span className="text-amber-400 font-semibold">shoulder yield {agent.turnIntent.yielding}%</span>
             ) : (
               `straight ${agent.turnIntent.straight}% · left ${agent.turnIntent.left}%`
             )}
@@ -89,37 +90,37 @@ export function AgentInspectorCard({ agent, onClose }: AgentInspectorCardProps) 
         </div>
 
         <div className="flex items-center justify-between">
-          <span className="text-slate-400">signal:</span>
-          <span className="font-medium text-emerald-600 dark:text-emerald-400">{agent.signalCountdown}</span>
+          <span className="text-slate-400">signal phase</span>
+          <span className="font-medium text-emerald-400">{agent.signalCountdown}</span>
         </div>
 
         <div className="flex items-center justify-between">
-          <span className="text-slate-400">range:</span>
-          <span className="text-slate-700 dark:text-slate-300">{agent.distToNextJunctionM} m from node</span>
+          <span className="text-slate-400">node proximity</span>
+          <span className="text-slate-200">{agent.distToNextJunctionM} m from node</span>
         </div>
 
         <div className="flex items-center justify-between">
-          <span className="text-slate-400">approach:</span>
-          <span className="text-slate-700 dark:text-slate-300">{agent.approachName}</span>
+          <span className="text-slate-400">approach</span>
+          <span className="text-slate-200">{agent.approachName}</span>
         </div>
 
         <div className="flex items-center justify-between">
-          <span className="text-slate-400">following:</span>
-          <span className="text-slate-700 dark:text-slate-300">{agent.followingText}</span>
+          <span className="text-slate-400">following</span>
+          <span className="text-slate-300">{agent.followingText}</span>
         </div>
 
         {agent.type !== "ambulance" && (
-          <div className="flex items-center justify-between border-t border-slate-200/80 pt-2 dark:border-slate-800/80">
-            <span className="text-slate-400">dist to emergency:</span>
-            <span className="font-bold text-orange-600 dark:text-orange-400">
+          <div className="flex items-center justify-between border-t border-indigo-500/20 pt-2">
+            <span className="text-slate-400">dist to emergency</span>
+            <span className="font-bold text-orange-400">
               {Math.round(agent.distToAmbulance * 4.5)} m
             </span>
           </div>
         )}
       </div>
 
-      <div className="border-t border-slate-200/80 bg-slate-100/70 px-4 py-2 text-center text-[10px] font-mono text-slate-500 dark:border-slate-800/80 dark:bg-slate-900/60 dark:text-slate-400">
-        Click empty ground or press Esc to release
+      <div className="border-t border-indigo-500/20 bg-slate-900/40 px-5 py-2.5 text-center text-[10px] font-mono text-slate-400">
+        Click ground or press Esc to release tracking
       </div>
     </div>
   );

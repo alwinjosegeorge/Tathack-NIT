@@ -193,7 +193,7 @@ function MachineSightPage() {
 
   return (
     <AppShell>
-      <div className="relative flex h-[calc(100vh-120px)] min-h-[660px] w-full flex-col overflow-hidden rounded-3xl border border-slate-200/80 bg-[#eceae6] shadow-2xl dark:border-slate-800 dark:bg-[#070b14]">
+      <div className="relative flex h-[calc(100vh-120px)] min-h-[660px] w-full flex-col overflow-hidden rounded-3xl border border-indigo-500/30 bg-[#070b14] shadow-[0_0_50px_-10px_rgba(99,102,241,0.25)] glow-border-intense">
         {/* 3D R3F Canvas */}
         <MachineSightCanvas
           simRef={simRef}
