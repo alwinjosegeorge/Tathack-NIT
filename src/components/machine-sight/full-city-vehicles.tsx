@@ -1,9 +1,9 @@
-// Renders 250-400 City Vehicles and 80-150 Pedestrians across the 16x16 Grid with MultiSensorShader
-import React, { useMemo, useRef } from "react";
+// Renders 350+ High-Density City Vehicles & Pedestrians with Clay Shading, LIDAR Point Clouds & Monospace Tags
+import React, { useMemo } from "react";
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
-import { FullCityTrafficEngine } from "@/lib/sim/full-city-traffic";
+import { FullCityTrafficEngine, CityVehicle } from "@/lib/sim/full-city-traffic";
 import { PerceptionAgent } from "@/lib/sim/perception";
 import { MultiSensorShader } from "./shaders";
 
@@ -32,7 +32,7 @@ export function FullCityVehicles({
   const vehicleShaderMat = useMemo(() => {
     const uniforms = THREE.UniformsUtils.clone(MultiSensorShader.uniforms);
     uniforms.uSemanticType.value = 4; // Car
-    uniforms.uClayBaseColor.value = new THREE.Color("#f1f5f9");
+    uniforms.uClayBaseColor.value = new THREE.Color("#ffffff");
     uniforms.uSegmentColor.value = new THREE.Color("#0284c7");
     uniforms.uZoneRadius.value = zoneRadius;
     uniforms.uSensorMode.value = sensorMode;
@@ -45,11 +45,12 @@ export function FullCityVehicles({
     });
   }, [zoneRadius, sensorMode]);
 
+  // Shared pedestrian shader material
   const pedestrianShaderMat = useMemo(() => {
     const uniforms = THREE.UniformsUtils.clone(MultiSensorShader.uniforms);
-    uniforms.uSemanticType.value = 4;
+    uniforms.uSemanticType.value = 6; // Pedestrian
     uniforms.uClayBaseColor.value = new THREE.Color("#e2e8f0");
-    uniforms.uSegmentColor.value = new THREE.Color("#a855f7");
+    uniforms.uSegmentColor.value = new THREE.Color("#ec4899");
     uniforms.uZoneRadius.value = zoneRadius;
     uniforms.uSensorMode.value = sensorMode;
 
@@ -76,7 +77,6 @@ export function FullCityVehicles({
 
   // Prioritize and cull tags to max 25 inside the zone
   const culledTags = useMemo(() => {
-    // Sort: ambulance first, then TTC alerts, then closest to zone center
     return [...agentsInZone]
       .filter((a) => a.inZone)
       .sort((a, b) => {
@@ -91,52 +91,22 @@ export function FullCityVehicles({
 
   return (
     <group>
-      {/* 1. Traffic Vehicles */}
-      {trafficEngine.vehicles.map((veh) => {
-        const isSelected = selectedAgentId === veh.id;
-        const distToCenter = Math.hypot(veh.x - zoneCenter[0], veh.z - zoneCenter[1]);
-        const inZone = distToCenter <= zoneRadius;
+      {/* 1. All Traffic Vehicles (Visible across all roads) */}
+      {trafficEngine.vehicles.map((veh) => (
+        <TrafficCarEntity
+          key={veh.id}
+          veh={veh}
+          isSelected={selectedAgentId === veh.id}
+          onSelect={() => onSelectAgent(veh.id)}
+          zoneCenter={zoneCenter}
+          zoneRadius={zoneRadius}
+          sensorMode={sensorMode}
+          material={vehicleShaderMat}
+          lowQuality={lowQuality}
+        />
+      ))}
 
-        return (
-          <group
-            key={veh.id}
-            position={[veh.x, veh.y, veh.z]}
-            rotation={[0, -veh.heading + Math.PI / 2, 0]}
-            onClick={(e) => {
-              e.stopPropagation();
-              onSelectAgent(veh.id);
-            }}
-          >
-            {/* 3D Model */}
-            <mesh material={vehicleShaderMat} castShadow={!lowQuality}>
-              <boxGeometry args={veh.dimensions} />
-            </mesh>
-
-            {/* Bounding Box when inside Vision Zone */}
-            {inZone && (
-              <mesh position={[0, 0, 0]}>
-                <boxGeometry args={[veh.dimensions[0] + 0.3, veh.dimensions[1] + 0.3, veh.dimensions[2] + 0.3]} />
-                <meshBasicMaterial
-                  color={isSelected ? "#38bdf8" : sensorMode === 0 ? "#00f0ff" : "#2dd4bf"}
-                  wireframe
-                  transparent
-                  opacity={isSelected ? 0.95 : 0.45}
-                />
-              </mesh>
-            )}
-
-            {/* Selection Ring */}
-            {isSelected && (
-              <mesh position={[0, -veh.dimensions[1] / 2 + 0.05, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-                <ringGeometry args={[2.5, 2.8, 32]} />
-                <meshBasicMaterial color="#38bdf8" side={THREE.DoubleSide} />
-              </mesh>
-            )}
-          </group>
-        );
-      })}
-
-      {/* 2. Pedestrians */}
+      {/* 2. Pedestrians on Sidewalks & Crosswalks */}
       {!lowQuality &&
         trafficEngine.pedestrians.map((ped) => {
           const isSelected = selectedAgentId === ped.id;
@@ -153,11 +123,10 @@ export function FullCityVehicles({
                 onSelectAgent(ped.id);
               }}
             >
-              {/* Torso */}
+              {/* Torso & Head */}
               <mesh position={[0, 0.4, 0]} material={pedestrianShaderMat}>
-                <cylinderGeometry args={[0.2, 0.2, 0.8, 6]} />
+                <cylinderGeometry args={[0.22, 0.22, 0.8, 6]} />
               </mesh>
-              {/* Head */}
               <mesh position={[0, 1.0, 0]} material={pedestrianShaderMat}>
                 <sphereGeometry args={[0.18, 6, 6]} />
               </mesh>
@@ -166,10 +135,10 @@ export function FullCityVehicles({
                 <mesh position={[0, 0.5, 0]}>
                   <boxGeometry args={[0.7, 1.4, 0.7]} />
                   <meshBasicMaterial
-                    color={isSelected ? "#38bdf8" : "#a855f7"}
+                    color={isSelected ? "#38bdf8" : "#ec4899"}
                     wireframe
                     transparent
-                    opacity={isSelected ? 0.9 : 0.4}
+                    opacity={isSelected ? 0.95 : 0.45}
                   />
                 </mesh>
               )}
@@ -186,6 +155,73 @@ export function FullCityVehicles({
           onSelect={() => onSelectAgent(agent.id)}
         />
       ))}
+    </group>
+  );
+}
+
+function TrafficCarEntity({
+  veh,
+  isSelected,
+  onSelect,
+  zoneCenter,
+  zoneRadius,
+  sensorMode,
+  material,
+  lowQuality,
+}: {
+  veh: CityVehicle;
+  isSelected: boolean;
+  onSelect: () => void;
+  zoneCenter: [number, number];
+  zoneRadius: number;
+  sensorMode: 0 | 1 | 2;
+  material: THREE.Material;
+  lowQuality?: boolean;
+}) {
+  const distToCenter = Math.hypot(veh.x - zoneCenter[0], veh.z - zoneCenter[1]);
+  const inZone = distToCenter <= zoneRadius;
+
+  return (
+    <group
+      position={[veh.x, veh.y, veh.z]}
+      rotation={[0, -veh.heading + Math.PI / 2, 0]}
+      onClick={(e) => {
+        e.stopPropagation();
+        onSelect();
+      }}
+    >
+      {/* Detailed Low-Poly Car Chassis (Visible in Clay outside, transforms to LIDAR inside) */}
+      <mesh material={material} castShadow={!lowQuality && inZone}>
+        <boxGeometry args={veh.dimensions} />
+      </mesh>
+
+      {/* Roof Cabin for Sedans / SUVs */}
+      {veh.type === "car" && (
+        <mesh position={[-0.2, veh.dimensions[1] * 0.45, 0]} material={material}>
+          <boxGeometry args={[veh.dimensions[0] * 0.52, veh.dimensions[1] * 0.55, veh.dimensions[2] * 0.85]} />
+        </mesh>
+      )}
+
+      {/* 3D Wireframe Bounding Box when inside Vision Zone */}
+      {inZone && (
+        <mesh position={[0, 0, 0]}>
+          <boxGeometry args={[veh.dimensions[0] + 0.35, veh.dimensions[1] + 0.35, veh.dimensions[2] + 0.35]} />
+          <meshBasicMaterial
+            color={isSelected ? "#38bdf8" : sensorMode === 0 ? "#00f0ff" : "#2dd4bf"}
+            wireframe
+            transparent
+            opacity={isSelected ? 0.95 : 0.5}
+          />
+        </mesh>
+      )}
+
+      {/* Selection Ring */}
+      {isSelected && (
+        <mesh position={[0, -veh.dimensions[1] / 2 + 0.05, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[2.5, 2.8, 32]} />
+          <meshBasicMaterial color="#38bdf8" side={THREE.DoubleSide} />
+        </mesh>
+      )}
     </group>
   );
 }
@@ -210,7 +246,7 @@ function ScreenAgentTag({
         agent.position[2],
       ]}
       center
-      distanceFactor={100}
+      distanceFactor={95}
       zIndexRange={[80, 0]}
     >
       <button

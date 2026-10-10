@@ -1,7 +1,6 @@
-// High-Performance 60FPS Full-City Traffic & Pedestrian Simulator across 16x16 Grid
+// High-Density Bumper-to-Bumper Traffic & Pedestrian Simulator across 16x16 Grid
 import { FullCityData, CityRoadSegment, CityJunction } from "./full-city-generator";
 import { PerceptionAgent, TurnIntent } from "./perception";
-import { sharedCorridorSpline } from "./spline-path";
 
 export interface CityVehicle {
   id: string;
@@ -24,6 +23,7 @@ export interface CityVehicle {
   yieldTimer: number;
   dimensions: [number, number, number];
   color: string;
+  isParked?: boolean;
 }
 
 export interface CityPedestrian {
@@ -64,67 +64,78 @@ export class FullCityTrafficEngine {
 
   private initTraffic() {
     this.vehicles = [];
-    const targetCount = this.lowQuality ? 120 : 280;
     const roads = this.cityData.roads;
+    const colors = ["#ffffff", "#f1f5f9", "#e2e8f0", "#cbd5e1", "#94a3b8", "#64748b", "#38bdf8", "#0284c7"];
+    const types: CityVehicle["type"][] = ["car", "car", "car", "auto", "bus", "bike", "car", "car"];
 
-    const colors = ["#f8fafc", "#e2e8f0", "#cbd5e1", "#94a3b8", "#64748b", "#38bdf8", "#0284c7"];
-    const types: CityVehicle["type"][] = ["car", "car", "car", "auto", "bus", "bike"];
+    let vehicleIdCounter = 1;
 
-    for (let i = 0; i < targetCount; i++) {
-      const roadIdx = i % roads.length;
-      const road = roads[roadIdx];
-      const prog = (i * 0.37 + 0.1) % 1.0;
-      const vType = types[i % types.length];
+    // Distribute dense traffic queues across every single road in the city
+    roads.forEach((road, roadIdx) => {
+      // Determine how many cars per road based on quality mode
+      const carsOnThisRoad = this.lowQuality ? (roadIdx % 2 === 0 ? 2 : 1) : (road.isMainCorridor ? 5 : 3);
+      const laneOffsets = road.laneCount === 4 ? [-4.8, -1.8, 1.8, 4.8] : [-2.6, 2.6];
 
-      // Lane offsets (-3.5, 3.5 for 2-lane, -5.5, -2.0, 2.0, 5.5 for 4-lane)
-      const isEastOrSouth = i % 2 === 0;
-      const laneOffset = isEastOrSouth ? (road.laneCount === 4 ? 2.5 : 2.5) : (road.laneCount === 4 ? -2.5 : -2.5);
+      for (let c = 0; c < carsOnThisRoad; c++) {
+        const laneOffset = laneOffsets[c % laneOffsets.length];
+        const isForward = laneOffset > 0;
+        const heading = isForward ? road.heading : road.heading + Math.PI;
 
-      const vx = road.start[0] + (road.end[0] - road.start[0]) * prog;
-      const vz = road.start[1] + (road.end[1] - road.start[1]) * prog;
-      const heading = isEastOrSouth ? road.heading : road.heading + Math.PI;
+        // Space cars along the road segment to form realistic queues (bumper to bumper)
+        const prog = Math.min(0.95, Math.max(0.05, (c + 0.5) / carsOnThisRoad));
+        const vType = types[vehicleIdCounter % types.length];
 
-      let dims: [number, number, number] = [3.8, 1.3, 1.7];
-      let maxSpd = 12.0;
-      if (vType === "bus") {
-        dims = [8.5, 2.8, 2.4];
-        maxSpd = 9.0;
-      } else if (vType === "auto") {
-        dims = [2.6, 1.6, 1.3];
-        maxSpd = 10.5;
-      } else if (vType === "bike") {
-        dims = [1.8, 1.4, 0.7];
-        maxSpd = 14.0;
+        let dims: [number, number, number] = [3.8, 1.25, 1.7];
+        let maxSpd = 12.5;
+        if (vType === "bus") {
+          dims = [8.2, 2.7, 2.4];
+          maxSpd = 9.0;
+        } else if (vType === "auto") {
+          dims = [2.6, 1.55, 1.3];
+          maxSpd = 10.5;
+        } else if (vType === "bike") {
+          dims = [1.8, 1.35, 0.7];
+          maxSpd = 14.0;
+        }
+
+        const vx = road.start[0] + (road.end[0] - road.start[0]) * prog;
+        const vz = road.start[1] + (road.end[1] - road.start[1]) * prog;
+
+        const perpAngle = road.heading + Math.PI / 2;
+        const posX = vx + Math.cos(perpAngle) * laneOffset;
+        const posZ = vz + Math.sin(perpAngle) * laneOffset;
+
+        this.vehicles.push({
+          id: `cveh-${vehicleIdCounter}`,
+          type: vType,
+          label: `CAR ${String(vehicleIdCounter).padStart(2, "0")}`,
+          roadId: road.id,
+          roadIndex: roadIdx,
+          progress: prog,
+          speed: maxSpd * 0.75,
+          maxSpeed: maxSpd,
+          targetSpeed: maxSpd,
+          laneOffset,
+          x: posX,
+          y: dims[1] / 2,
+          z: posZ,
+          heading,
+          roll: 0,
+          stoppedAtRed: false,
+          isYielding: false,
+          yieldTimer: 0,
+          dimensions: dims,
+          color: colors[vehicleIdCounter % colors.length],
+        });
+
+        vehicleIdCounter++;
       }
-
-      this.vehicles.push({
-        id: `cveh-${i}`,
-        type: vType,
-        label: `${vType.toUpperCase()} ${String(i + 1).padStart(2, "0")}`,
-        roadId: road.id,
-        roadIndex: roadIdx,
-        progress: prog,
-        speed: maxSpd * 0.8,
-        maxSpeed: maxSpd,
-        targetSpeed: maxSpd,
-        laneOffset,
-        x: vx,
-        y: dims[1] / 2,
-        z: vz,
-        heading,
-        roll: 0,
-        stoppedAtRed: false,
-        isYielding: false,
-        yieldTimer: 0,
-        dimensions: dims,
-        color: colors[i % colors.length],
-      });
-    }
+    });
   }
 
   private initPedestrians() {
     this.pedestrians = [];
-    const count = this.lowQuality ? 40 : 110;
+    const count = this.lowQuality ? 45 : 120;
     const junctions = this.cityData.junctions;
 
     for (let i = 0; i < count; i++) {
@@ -133,22 +144,22 @@ export class FullCityTrafficEngine {
       const offsetZ = ((i * 17) % 40) - 20;
 
       this.pedestrians.push({
-        id: `cped-${i}`,
+        id: `cped-${i + 1}`,
         label: `PED ${String(i + 1).padStart(2, "0")}`,
         x: jn.x + offsetX,
         y: 0.4,
         z: jn.z + offsetZ,
-        targetX: jn.x + offsetX + (i % 2 === 0 ? 30 : -30),
-        targetZ: jn.z + offsetZ + (i % 3 === 0 ? 30 : -30),
-        speed: 3.5 + (i % 3) * 0.5, // km/h
+        targetX: jn.x + offsetX + (i % 2 === 0 ? 25 : -25),
+        targetZ: jn.z + offsetZ + (i % 3 === 0 ? 25 : -25),
+        speed: 3.6 + (i % 3) * 0.6,
         heading: 0,
-        state: i % 4 === 0 ? "crossing" : "walking_sidewalk",
+        state: i % 3 === 0 ? "crossing" : "walking_sidewalk",
         walkTimer: (i * 7) % 20,
       });
     }
   }
 
-  // 60Hz Step Routine for all city agents
+  // 60Hz Step Routine
   public step(dt: number, zoneCenter: [number, number], zoneRadius: number, ambulancePos?: [number, number]) {
     this.time += dt;
 
@@ -165,7 +176,7 @@ export class FullCityTrafficEngine {
       const distToZone = Math.hypot(veh.x - zoneCenter[0], veh.z - zoneCenter[1]);
       const nearZone = distToZone <= zoneRadius + 35;
 
-      // Yielding logic near ambulance
+      // Yielding logic when near emergency ambulance
       if (ambulancePos && nearZone) {
         const distToAmb = Math.hypot(veh.x - ambulancePos[0], veh.z - ambulancePos[1]);
         if (distToAmb < 55) {
@@ -179,12 +190,13 @@ export class FullCityTrafficEngine {
         if (veh.yieldTimer <= 0) veh.isYielding = false;
       }
 
-      // Check signal stop near junction (at end of road)
+      // Check signal stop near junction
       let signalStop = false;
-      if (veh.progress > 0.88) {
-        // Approaching junction
+      if (veh.progress > 0.82) {
+        const isForward = veh.laneOffset > 0;
+        const checkPoint = isForward ? road.end : road.start;
         const jn = this.cityData.junctions.find(
-          (j) => Math.hypot(j.x - road.end[0], j.z - road.end[1]) < 18
+          (j) => Math.hypot(j.x - checkPoint[0], j.z - checkPoint[1]) < 18
         );
         if (jn) {
           const isEW = road.heading === 0;
@@ -195,15 +207,15 @@ export class FullCityTrafficEngine {
 
       veh.stoppedAtRed = signalStop;
 
-      // Speed control
+      // Target speed calculation
       let targetSpd = veh.maxSpeed;
       if (signalStop) {
         targetSpd = 0;
       } else if (veh.isYielding) {
-        targetSpd = Math.min(6.0, veh.maxSpeed * 0.4);
+        targetSpd = Math.min(5.0, veh.maxSpeed * 0.35);
       }
 
-      const accel = targetSpd < veh.speed ? -18.0 : 6.0;
+      const accel = targetSpd < veh.speed ? -18.0 : 6.5;
       veh.speed = Math.max(0, veh.speed + accel * dt);
       if (targetSpd === 0 && veh.speed < 0.2) veh.speed = 0;
 
@@ -213,8 +225,6 @@ export class FullCityTrafficEngine {
 
       if (veh.progress >= 1.0) {
         veh.progress = 0;
-        // Optionally switch to adjacent road or wrap
-        veh.roadIndex = (veh.roadIndex + 1) % roads.length;
       }
 
       // Compute 3D position
@@ -224,13 +234,11 @@ export class FullCityTrafficEngine {
       const px = curRoad.start[0] + (curRoad.end[0] - curRoad.start[0]) * curProg;
       const pz = curRoad.start[1] + (curRoad.end[1] - curRoad.start[1]) * curProg;
 
-      // Lateral shift for shoulder yielding
       const perpAngle = curRoad.heading + Math.PI / 2;
-      const lateralShift = veh.isYielding ? veh.laneOffset + 3.2 : veh.laneOffset;
+      const lateralShift = veh.isYielding ? veh.laneOffset + 2.8 : veh.laneOffset;
 
       veh.x = px + Math.cos(perpAngle) * lateralShift;
       veh.z = pz + Math.sin(perpAngle) * lateralShift;
-      veh.heading = curRoad.heading;
     });
 
     // 3. Step Pedestrians
@@ -241,7 +249,6 @@ export class FullCityTrafficEngine {
       const dist = Math.hypot(dx, dz);
 
       if (dist < 1.5) {
-        // Swap target
         const tempX = ped.targetX;
         const tempZ = ped.targetZ;
         ped.targetX = ped.x - dx * 2;
@@ -255,11 +262,11 @@ export class FullCityTrafficEngine {
     });
   }
 
-  // Extract candidate perception agents for inspection & zone tagging
+  // Extract perception agents for the active zone
   public getPerceptionAgents(zoneCenter: [number, number], zoneRadius: number, ambulancePos: [number, number]): PerceptionAgent[] {
     const list: PerceptionAgent[] = [];
 
-    // 1. Vehicles in or near zone
+    // 1. Vehicles
     this.vehicles.forEach((veh) => {
       const distToCenter = Math.hypot(veh.x - zoneCenter[0], veh.z - zoneCenter[1]);
       const distToAmb = Math.hypot(veh.x - ambulancePos[0], veh.z - ambulancePos[1]);
@@ -275,11 +282,11 @@ export class FullCityTrafficEngine {
       if (veh.isYielding) {
         statusBadge = "WAIT";
         headline = "Yielding to shoulder";
-        explanation = `Shifted to shoulder lane. Clear of corridor center.`;
+        explanation = `Shifted to shoulder lane. Corridor clearance verified.`;
       } else if (veh.stoppedAtRed) {
         statusBadge = "WAIT";
         headline = "Holding at red signal";
-        explanation = `Stopped at junction line waiting for green cycle.`;
+        explanation = `Stopped at junction stop line waiting for green cycle.`;
       }
 
       list.push({
@@ -300,11 +307,11 @@ export class FullCityTrafficEngine {
         inZone,
         isYielding: veh.isYielding,
         stoppedAtSignal: veh.stoppedAtRed,
-        followingText: "free flow",
-        followingGapMeters: 16,
-        nextJunctionName: "City Grid Node",
+        followingText: "traffic queue",
+        followingGapMeters: 10,
+        nextJunctionName: "Kochi City Node",
         distToNextJunctionM: Math.round((1.0 - veh.progress) * 70),
-        signalCountdown: veh.stoppedAtRed ? "red · green in 8.4 s" : "green · 12.0 s",
+        signalCountdown: veh.stoppedAtRed ? "red · green in 6.4 s" : "green · 10.0 s",
         approachName: veh.heading === 0 ? "west approach" : "north approach",
         turnIntent: { straight: 82, left: 12, right: 6, yielding: veh.isYielding ? 80 : 0 },
         dimensions: veh.dimensions,
@@ -316,7 +323,7 @@ export class FullCityTrafficEngine {
       });
     });
 
-    // 2. Pedestrians in or near zone
+    // 2. Pedestrians
     this.pedestrians.forEach((ped) => {
       const distToCenter = Math.hypot(ped.x - zoneCenter[0], ped.z - zoneCenter[1]);
       const distToAmb = Math.hypot(ped.x - ambulancePos[0], ped.z - ambulancePos[1]);
@@ -333,21 +340,21 @@ export class FullCityTrafficEngine {
         heading: ped.heading,
         roll: 0,
         statusBadge: ped.state === "crossing" ? "WAIT" : "SAFE",
-        headline: ped.state === "crossing" ? "Crossing at crosswalk" : "On the sidewalk",
+        headline: ped.state === "crossing" ? "Crossing on walk" : "On the sidewalk",
         explanation: ped.state === "crossing"
-          ? "Crossing crosswalk, clear of traffic flow."
+          ? "12 m to the far curb, about 7.4 s."
           : `Walking at ${Math.round(ped.speed)} km/h along sidewalk.`,
         distToZoneCenter: distToCenter,
         distToAmbulance: distToAmb,
         inZone,
         isYielding: false,
         stoppedAtSignal: ped.state === "waiting_signal",
-        followingText: "none (pedestrian walk)",
+        followingText: "none (pedestrian path)",
         followingGapMeters: 8,
         nextJunctionName: "Crosswalk Node",
-        distToNextJunctionM: 12,
-        signalCountdown: ped.state === "crossing" ? "walk · 6.2 s" : "don't walk · 8.0 s",
-        approachName: "sidewalk",
+        distToNextJunctionM: 11,
+        signalCountdown: ped.state === "crossing" ? "walk · 8.9 s" : "don't walk · 6.0 s",
+        approachName: "crosswalk",
         turnIntent: { straight: 94, left: 3, right: 3, yielding: 0 },
         dimensions: [0.6, 1.8, 0.6],
         collisionRadius: 0.6,
