@@ -17,6 +17,7 @@ interface SceneProps {
   onSnapshot: (snapshot: ReturnType<TrafficEngine['getSnapshot']>) => void;
   followAmbulance: boolean;
   selectedVehicleId: number | null;
+  onSelectVehicle?: (id: number | null) => void;
   incidents: IncidentMarker[];
   recurrences: RecurrenceAlert[];
   selectedIncidentId: string | null;
@@ -49,31 +50,59 @@ function useVehiclePool(size: number): VehicleSlotData[] {
   }, []);
 }
 
-function CarSlot({ slot }: { slot: VehicleSlotData }) {
+function CarSlot({ slot, onSelect }: { slot: VehicleSlotData; onSelect?: (id: number) => void }) {
   return (
-    <group ref={slot.groupRef} visible={false}>
+    <group
+      ref={slot.groupRef}
+      visible={false}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (slot.idRef.current > 0) onSelect?.(slot.idRef.current);
+      }}
+    >
       <Car color={slot.colorRef.current} speedRef={slot.speedRef} brakeLightRef={slot.brakeLightRef} />
     </group>
   );
 }
-function MotoSlot({ slot }: { slot: VehicleSlotData }) {
+function MotoSlot({ slot, onSelect }: { slot: VehicleSlotData; onSelect?: (id: number) => void }) {
   return (
-    <group ref={slot.groupRef} visible={false}>
+    <group
+      ref={slot.groupRef}
+      visible={false}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (slot.idRef.current > 0) onSelect?.(slot.idRef.current);
+      }}
+    >
       <Motorcycle color={slot.colorRef.current} speedRef={slot.speedRef} brakeLightRef={slot.brakeLightRef} />
     </group>
   );
 }
-function BusSlot({ slot }: { slot: VehicleSlotData }) {
+function BusSlot({ slot, onSelect }: { slot: VehicleSlotData; onSelect?: (id: number) => void }) {
   return (
-    <group ref={slot.groupRef} visible={false}>
+    <group
+      ref={slot.groupRef}
+      visible={false}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (slot.idRef.current > 0) onSelect?.(slot.idRef.current);
+      }}
+    >
       <Bus color={slot.colorRef.current} speedRef={slot.speedRef} brakeLightRef={slot.brakeLightRef} />
     </group>
   );
 }
-function AmbulanceSlot({ slot }: { slot: VehicleSlotData }) {
+function AmbulanceSlot({ slot, onSelect }: { slot: VehicleSlotData; onSelect?: (id: number) => void }) {
   const emergRef = useRef(true);
   return (
-    <group ref={slot.groupRef} visible={false}>
+    <group
+      ref={slot.groupRef}
+      visible={false}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (slot.idRef.current > 0) onSelect?.(slot.idRef.current);
+      }}
+    >
       <Ambulance speedRef={slot.speedRef} brakeLightRef={slot.brakeLightRef} emergencyActive={emergRef.current} />
     </group>
   );
@@ -102,10 +131,12 @@ function VehicleRenderer({
   engine,
   followAmbulance,
   selectedVehicleId,
+  onSelectVehicle,
 }: {
   engine: TrafficEngine;
   followAmbulance: boolean;
   selectedVehicleId: number | null;
+  onSelectVehicle?: (id: number | null) => void;
 }) {
   const POOL = MAX_VEHICLES + 5;
   const HALF = Math.floor(POOL / 4);
@@ -197,10 +228,10 @@ function VehicleRenderer({
 
   return (
     <>
-      <group>{carSlots.map((s, i) => <CarSlot key={`car-${i}`} slot={s} />)}</group>
-      <group>{motoSlots.map((s, i) => <MotoSlot key={`moto-${i}`} slot={s} />)}</group>
-      <group>{busSlots.map((s, i) => <BusSlot key={`bus-${i}`} slot={s} />)}</group>
-      <group>{ambSlots.map((s, i) => <AmbulanceSlot key={`amb-${i}`} slot={s} />)}</group>
+      <group>{carSlots.map((s, i) => <CarSlot key={`car-${i}`} slot={s} onSelect={onSelectVehicle} />)}</group>
+      <group>{motoSlots.map((s, i) => <MotoSlot key={`moto-${i}`} slot={s} onSelect={onSelectVehicle} />)}</group>
+      <group>{busSlots.map((s, i) => <BusSlot key={`bus-${i}`} slot={s} onSelect={onSelectVehicle} />)}</group>
+      <group>{ambSlots.map((s, i) => <AmbulanceSlot key={`amb-${i}`} slot={s} onSelect={onSelectVehicle} />)}</group>
     </>
   );
 }
@@ -251,6 +282,7 @@ function SceneContent({
   onSnapshot,
   followAmbulance,
   selectedVehicleId,
+  onSelectVehicle,
   incidents,
   recurrences,
   selectedIncidentId,
@@ -309,6 +341,7 @@ function SceneContent({
         engine={engine}
         followAmbulance={followAmbulance}
         selectedVehicleId={selectedVehicleId}
+        onSelectVehicle={onSelectVehicle}
       />
 
     </>
@@ -320,6 +353,7 @@ interface TrafficSimulationProps {
   onSnapshot: (snapshot: ReturnType<TrafficEngine['getSnapshot']>) => void;
   followAmbulance?: boolean;
   selectedVehicleId?: number | null;
+  onSelectVehicle?: (id: number | null) => void;
   incidents?: IncidentMarker[];
   recurrences?: RecurrenceAlert[];
   selectedIncidentId?: string | null;
@@ -332,6 +366,7 @@ export function TrafficSimulation({
   onSnapshot,
   followAmbulance = false,
   selectedVehicleId = null,
+  onSelectVehicle,
   incidents = [],
   recurrences = [],
   selectedIncidentId = null,
@@ -343,6 +378,7 @@ export function TrafficSimulation({
       camera={{ position: [100, 80, 100], fov: 50, near: 0.1, far: 1200 }}
       gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.1 }}
       dpr={[1, 2]}
+      onPointerMissed={() => onSelectVehicle?.(null)}
     >
       <color attach="background" args={['#a0b8c8']} />
       <fog attach="fog" args={['#a0b8c8', 220, 650]} />
@@ -352,6 +388,7 @@ export function TrafficSimulation({
           onSnapshot={onSnapshot}
           followAmbulance={followAmbulance}
           selectedVehicleId={selectedVehicleId}
+          onSelectVehicle={onSelectVehicle}
           incidents={incidents}
           recurrences={recurrences}
           selectedIncidentId={selectedIncidentId}

@@ -16,6 +16,7 @@ import {
 } from "@/lib/city-sim/civicApi";
 import { Activity, ShieldAlert, Cpu, History, Maximize2, Minimize2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 type ActiveTab = "traffic" | "root_cause" | "what_if" | "city_memory";
 
@@ -69,35 +70,15 @@ export function City3DDigitalTwin({
     setSnapshot(snap as SnapshotData);
   }, []);
 
-  const handleActivateEmergency = useCallback(async () => {
+  const handleActivateEmergency = useCallback(() => {
     if (!engineRef.current) return;
-    setEmergencyPending(true);
+    engineRef.current.activateEmergency("south");
+    setFollowAmbulance(true);
+    setEmergencyPending(false);
+    toast.success("🚨 Emergency Corridor Preempted! Ambulance dispatched immediately via SA Road.");
 
-    try {
-      // 1. Submit emergency request via API
-      const reqRes = await submitEmergencyRequest("south", !BACKEND_AVAILABLE);
-      const requestId = reqRes.data.requestId;
-
-      // 2. Poll for operator approval
-      let attempts = 0;
-      const interval = setInterval(async () => {
-        attempts++;
-        const statusRes = await getApprovalStatus(requestId);
-        if (statusRes.data.status === "approved") {
-          clearInterval(interval);
-          setEmergencyPending(false);
-          engineRef.current?.activateEmergency("south");
-          setFollowAmbulance(true);
-        } else if (statusRes.data.status === "rejected" || attempts > 10) {
-          clearInterval(interval);
-          setEmergencyPending(false);
-        }
-      }, 500);
-    } catch {
-      setEmergencyPending(false);
-      engineRef.current.activateEmergency("south");
-      setFollowAmbulance(true);
-    }
+    // Submit background logging/telemetry without blocking simulation
+    submitEmergencyRequest("south", !BACKEND_AVAILABLE).catch(() => {});
   }, []);
 
   const handleDeactivateEmergency = useCallback(() => {
@@ -181,6 +162,7 @@ export function City3DDigitalTwin({
         onSnapshot={handleSnapshot}
         followAmbulance={followAmbulance}
         selectedVehicleId={selectedVehicleId}
+        onSelectVehicle={setSelectedVehicleId}
         incidents={incidents}
         recurrences={recurrences}
         selectedIncidentId={selectedIncidentId}

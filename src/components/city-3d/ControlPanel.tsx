@@ -1,8 +1,8 @@
 import { useState, useCallback } from 'react';
 import {
   Activity, Siren, Volume2, VolumeX, Car, Eye, EyeOff,
-  Pause, Play, RotateCw, ChevronsRight, Ambulance,
-  Gauge, MapPin, Clock,
+  Pause, Play, RotateCw, Ambulance,
+  Gauge, MapPin, Navigation, Maximize2, X, Zap,
 } from 'lucide-react';
 import type { Direction } from '@/lib/city-sim/types';
 import type { TrafficEngine } from '@/lib/city-sim/engine';
@@ -67,7 +67,7 @@ export function ControlPanel({
   selectedVehicleId,
   onSelectVehicle,
 }: ControlPanelProps) {
-  const [showStats, setShowStats] = useState(true);
+  const [showStats, setShowStats] = useState(false);
   const [showVehicleList, setShowVehicleList] = useState(false);
   const [localSpeed, setLocalSpeed] = useState(1.0);
 
@@ -88,61 +88,48 @@ export function ControlPanel({
     engine.setSpeed(val);
   }, [engine]);
 
-  const emergencyPhaseLabel = (() => {
-    if (!snapshot?.emergencyActive) return 'Inactive';
-    switch (Math.floor(snapshot.emergencyPhase)) {
-      case 1: return 'Pre-clearing corridor';
-      case 1.5: return 'Amber transition';
-      case 2: return 'Ambulance en route';
-      case 3: return 'Returning to normal';
-      default: return 'Active';
+  const handleFollowAmbulanceClick = useCallback(() => {
+    if (!snapshot?.emergencyActive) {
+      onActivateEmergency();
+    } else {
+      onToggleFollowAmbulance();
     }
-  })();
+  }, [snapshot?.emergencyActive, onActivateEmergency, onToggleFollowAmbulance]);
 
   const selectedVehicle = snapshot?.vehicles.find(v => v.id === selectedVehicleId);
 
   return (
     <>
-      {/* Top bar */}
+      {/* Top Floating Bar */}
       <div className="absolute top-0 left-0 right-0 z-10 pointer-events-none">
-        <div className="flex items-start justify-between p-4 gap-3">
-          {/* Logo */}
-          <div className="pointer-events-auto bg-slate-900/90 backdrop-blur-md rounded-2xl px-5 py-3 border border-indigo-400/30 shadow-[0_0_20px_-3px_rgba(139,92,246,0.3)] flex-shrink-0 dot-pattern-card">
+        <div className="flex items-start justify-between p-3 sm:p-4 gap-2 sm:gap-3">
+          {/* Logo Badge */}
+          <div className="pointer-events-auto bg-slate-950/85 backdrop-blur-xl rounded-2xl px-4 py-2 border border-indigo-400/30 shadow-[0_0_20px_-3px_rgba(139,92,246,0.3)] flex-shrink-0 dot-pattern-card">
             <div className="flex items-center gap-2">
-              <Activity className="w-5 h-5 text-cyan-400" />
-              <span className="text-white font-bold text-lg tracking-wide">CivicPulse</span>
-              <span className="text-cyan-400/70 text-sm font-medium ml-1">Traffic Sim</span>
-              {!BACKEND_AVAILABLE && (
-                <span className="text-[9px] px-1.5 py-0.5 bg-amber-900/50 text-amber-400 rounded border border-amber-700/40 ml-1">
-                  SIM ONLY
-                </span>
-              )}
+              <span className="size-2 rounded-full bg-emerald-400 animate-ping" />
+              <span className="text-white font-bold text-sm sm:text-base tracking-wide">CivicPulse 3D</span>
+              <span className="text-cyan-400 font-mono text-[11px] font-semibold hidden sm:inline">KOCHI TWIN</span>
             </div>
           </div>
 
-          {/* Signal indicators */}
-          <div className="pointer-events-auto bg-slate-900/90 backdrop-blur-md rounded-2xl px-4 py-3 border border-indigo-400/30 shadow-[0_0_20px_-3px_rgba(139,92,246,0.3)] dot-pattern-card">
-            <div className="flex items-center gap-3">
-              <span className="text-slate-400 text-xs font-medium uppercase tracking-wider">Signals</span>
-              <div className="flex gap-3">
+          {/* Real-time Signals Status */}
+          <div className="pointer-events-auto bg-slate-950/85 backdrop-blur-xl rounded-2xl px-3 sm:px-4 py-2 border border-indigo-400/30 shadow-[0_0_20px_-3px_rgba(139,92,246,0.3)] dot-pattern-card">
+            <div className="flex items-center gap-2.5 sm:gap-3">
+              <span className="text-slate-400 text-[10px] font-mono font-medium uppercase tracking-wider hidden sm:inline">Signals</span>
+              <div className="flex gap-2.5">
                 {(['north', 'south', 'east', 'west'] as Direction[]).map(dir => {
                   const state = snapshot?.signals[dir] ?? 'red';
                   const timer = snapshot?.signalTimers[dir];
                   return (
-                    <div key={dir} className="flex flex-col items-center gap-1">
+                    <div key={dir} className="flex flex-col items-center gap-0.5">
                       <div
-                        className="w-3.5 h-3.5 rounded-full transition-colors duration-300"
+                        className="w-3 h-3 rounded-full transition-colors duration-300"
                         style={{
                           backgroundColor: SIGNAL_COLOR[state],
                           boxShadow: SIGNAL_SHADOW[state],
                         }}
                       />
-                      <span className="text-slate-400 text-[9px] uppercase">{dir[0]}</span>
-                      {timer !== undefined && timer < 8 && (
-                        <span className="text-[8px] font-mono" style={{ color: SIGNAL_COLOR[state] }}>
-                          {Math.ceil(timer)}s
-                        </span>
-                      )}
+                      <span className="text-slate-400 text-[8px] font-mono uppercase">{dir[0]}</span>
                     </div>
                   );
                 })}
@@ -150,143 +137,183 @@ export function ControlPanel({
             </div>
           </div>
 
-          {/* Sim control mini */}
-          <div className="pointer-events-auto bg-slate-900/90 backdrop-blur-md rounded-2xl px-4 py-3 border border-indigo-400/30 shadow-[0_0_20px_-3px_rgba(139,92,246,0.3)] flex-shrink-0 dot-pattern-card">
-            <div className="flex items-center gap-2">
+          {/* Simulation Speed & Pause Controls */}
+          <div className="pointer-events-auto bg-slate-950/85 backdrop-blur-xl rounded-2xl px-3 py-2 border border-indigo-400/30 shadow-[0_0_20px_-3px_rgba(139,92,246,0.3)] flex-shrink-0 dot-pattern-card">
+            <div className="flex items-center gap-1.5 sm:gap-2">
               <button
                 onClick={handlePauseResume}
-                className={`p-1.5 rounded-lg transition-colors ${paused ? 'bg-cyan-600 text-white' : 'text-slate-300 hover:bg-slate-700'}`}
-                title={paused ? 'Resume' : 'Pause'}
+                className={`p-1.5 rounded-lg transition-colors ${paused ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-300 hover:bg-slate-800'}`}
+                title={paused ? 'Resume simulation' : 'Pause simulation'}
               >
-                {paused ? <Play size={14} /> : <Pause size={14} />}
+                {paused ? <Play size={13} /> : <Pause size={13} />}
               </button>
               <button
                 onClick={handleReset}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
-                title="Reset simulation"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                title="Reset simulation traffic"
               >
-                <RotateCw size={14} />
+                <RotateCw size={13} />
               </button>
-              <div className="flex items-center gap-1.5 ml-1">
-                <Gauge size={12} className="text-slate-400" />
-                <input
-                  type="range"
-                  min={0.25}
-                  max={3}
-                  step={0.25}
-                  value={localSpeed}
-                  onChange={e => handleSpeedChange(Number(e.target.value))}
-                  className="w-20 h-1 accent-cyan-400"
-                  title={`Sim speed: ${localSpeed}×`}
-                />
-                <span className="text-[10px] text-slate-300 w-6 text-right">{localSpeed}×</span>
+              <div className="hidden sm:flex items-center gap-1 ml-1 border-l border-indigo-500/20 pl-2">
+                {[1.0, 2.0].map(sp => (
+                  <button
+                    key={sp}
+                    onClick={() => handleSpeedChange(sp)}
+                    className={`px-2 py-0.5 rounded-md font-mono text-[10px] font-bold transition ${
+                      localSpeed === sp && !paused
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    {sp}x
+                  </button>
+                ))}
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Bottom control panel */}
-      <div className="absolute bottom-0 left-0 right-0 z-10 pointer-events-none">
-        <div className="flex items-end justify-center p-4">
-          <div className="pointer-events-auto bg-slate-900/90 backdrop-blur-md rounded-3xl border border-indigo-400/35 shadow-[0_0_35px_-4px_rgba(139,92,246,0.35)] p-4 w-full max-w-3xl dot-pattern-card">
-            {/* Main controls row */}
-            <div className="flex items-center gap-3 flex-wrap justify-between">
+      {/* Floating Vehicle Inspector Badge (When a car is selected or clicked) */}
+      {selectedVehicle && (
+        <div className="absolute top-16 left-4 z-20 pointer-events-auto animate-in fade-in slide-in-from-left duration-200">
+          <div className="bg-slate-950/90 backdrop-blur-xl rounded-2xl border border-cyan-400/40 p-3 shadow-[0_0_25px_-5px_rgba(6,182,212,0.4)] text-white font-mono text-xs dot-pattern-card w-64">
+            <div className="flex items-center justify-between pb-2 border-b border-indigo-500/20">
+              <div className="flex items-center gap-1.5">
+                <Car size={13} className="text-cyan-400" />
+                <span className="font-bold text-cyan-300">#{selectedVehicle.id} ({selectedVehicle.kind})</span>
+              </div>
+              <button
+                onClick={() => onSelectVehicle(null)}
+                className="text-slate-400 hover:text-white p-0.5"
+                title="Deselect"
+              >
+                <X size={13} />
+              </button>
+            </div>
+            <div className="grid grid-cols-3 gap-2 pt-2 text-center text-[11px]">
+              <div className="bg-slate-900/80 rounded-lg p-1.5">
+                <div className="font-bold text-white">{(selectedVehicle.speed * 3.6).toFixed(0)}</div>
+                <div className="text-[9px] text-slate-400">km/h</div>
+              </div>
+              <div className="bg-slate-900/80 rounded-lg p-1.5">
+                <div className="font-bold text-amber-400 capitalize">{selectedVehicle.phase}</div>
+                <div className="text-[9px] text-slate-400">Phase</div>
+              </div>
+              <div className="bg-slate-900/80 rounded-lg p-1.5">
+                <div className={`font-bold ${selectedVehicle.brakeLight ? 'text-rose-400' : 'text-slate-400'}`}>
+                  {selectedVehicle.brakeLight ? 'BRAKE' : 'FLOW'}
+                </div>
+                <div className="text-[9px] text-slate-400">Status</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
-              {/* Emergency toggle */}
+      {/* Bottom Compact Cyber Dock */}
+      <div className="absolute bottom-0 left-0 right-0 z-10 pointer-events-none">
+        <div className="flex items-end justify-center p-3 sm:p-5">
+          <div className="pointer-events-auto bg-slate-950/85 backdrop-blur-xl rounded-3xl border border-indigo-400/35 shadow-[0_0_35px_-4px_rgba(139,92,246,0.35)] p-3 sm:p-4 w-full max-w-2xl dot-pattern-card">
+            
+            {/* Primary Action Row */}
+            <div className="flex items-center gap-2 sm:gap-3 flex-wrap justify-between">
+              
+              {/* Emergency Corridor Toggle Button */}
               <button
                 onClick={snapshot?.emergencyActive ? onDeactivateEmergency : onActivateEmergency}
-                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold transition-all duration-300 text-sm ${
+                className={`flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 rounded-2xl font-bold transition-all duration-200 text-xs sm:text-sm cursor-pointer ${
                   snapshot?.emergencyActive
-                    ? 'bg-red-600 hover:bg-red-500 text-white shadow-[0_0_20px_rgba(239,68,68,0.4)]'
-                    : 'bg-slate-700 hover:bg-slate-600 text-white'
+                    ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-[0_0_25px_rgba(244,63,94,0.6)] border border-rose-400 animate-pulse'
+                    : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-[0_0_20px_rgba(99,102,241,0.4)] border border-indigo-400/50'
                 }`}
               >
-                {snapshot?.emergencyActive ? (
-                  <Siren className="w-4 h-4 animate-pulse" />
-                ) : (
-                  <Siren className="w-4 h-4" />
-                )}
-                <span>{snapshot?.emergencyActive ? 'Emergency Active' : 'Activate Emergency'}</span>
+                <Siren className="w-4 h-4 shrink-0" />
+                <span>{snapshot?.emergencyActive ? 'Emergency Active (Preempted)' : 'Instant Emergency Corridor'}</span>
               </button>
 
-              {/* Follow ambulance */}
+              {/* Follow Ambulance Camera */}
               <button
-                onClick={onToggleFollowAmbulance}
-                disabled={!snapshot?.emergencyActive}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium transition-all duration-300 text-sm ${
+                onClick={handleFollowAmbulanceClick}
+                className={`flex items-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 rounded-2xl font-semibold transition-all duration-200 text-xs sm:text-sm cursor-pointer ${
                   followAmbulance && snapshot?.emergencyActive
-                    ? 'bg-amber-600 hover:bg-amber-500 text-white'
-                    : 'bg-slate-700 hover:bg-slate-600 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed'
+                    ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-[0_0_20px_rgba(245,158,11,0.5)] border border-amber-300'
+                    : 'bg-slate-900/90 hover:bg-slate-800 text-slate-200 border border-slate-700/60 hover:border-amber-400/50'
                 }`}
-                title="Follow ambulance camera"
+                title="Follow ambulance camera with smooth tracking"
               >
-                <Ambulance size={16} />
-                <span>{followAmbulance ? 'Following' : 'Follow Ambulance'}</span>
+                <Ambulance size={15} />
+                <span>{followAmbulance && snapshot?.emergencyActive ? 'Tracking AMB' : 'Follow Ambulance'}</span>
               </button>
 
-              {/* Siren toggle */}
+              {/* Siren Toggle Button */}
               <button
                 onClick={onToggleSiren}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium transition-all duration-300 text-sm ${
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-2xl font-medium transition-all text-xs cursor-pointer ${
                   sirenEnabled
-                    ? 'bg-blue-600 hover:bg-blue-500 text-white'
-                    : 'bg-slate-700 hover:bg-slate-600 text-slate-300'
+                    ? 'bg-cyan-500/25 text-cyan-300 border border-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.4)]'
+                    : 'bg-slate-900/80 text-slate-400 border border-slate-700/60 hover:text-white'
                 }`}
+                title="Toggle Emergency Siren Audio"
               >
-                {sirenEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
-                <span>{sirenEnabled ? 'Siren On' : 'Siren Muted'}</span>
+                {sirenEnabled ? <Volume2 size={14} /> : <VolumeX size={14} />}
+                <span className="hidden sm:inline">{sirenEnabled ? 'Siren On' : 'Muted'}</span>
               </button>
 
-              {/* Vehicle selector */}
+              {/* Quick Vehicle Selector */}
               <button
                 onClick={() => setShowVehicleList(v => !v)}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium transition-all duration-300 text-sm ${
-                  showVehicleList
-                    ? 'bg-slate-600 text-white'
-                    : 'bg-slate-700 hover:bg-slate-600 text-slate-300'
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-2xl font-medium transition-all text-xs cursor-pointer ${
+                  showVehicleList || selectedVehicleId
+                    ? 'bg-indigo-500/25 text-indigo-300 border border-indigo-400'
+                    : 'bg-slate-900/80 text-slate-400 border border-slate-700/60 hover:text-white'
                 }`}
               >
-                <Car size={16} />
-                <span>{selectedVehicleId ? `#${selectedVehicleId}` : 'Select Vehicle'}</span>
+                <Car size={14} />
+                <span>{selectedVehicleId ? `#${selectedVehicleId}` : 'Vehicles'}</span>
               </button>
 
-              {/* Stats toggle */}
+              {/* Stats Ribbon Toggle */}
               <button
                 onClick={() => setShowStats(s => !s)}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium bg-slate-700 hover:bg-slate-600 text-slate-300 transition-all duration-300 text-sm"
+                className="flex items-center gap-1 px-2.5 py-2 rounded-2xl text-xs text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+                title="Toggle metrics summary"
               >
-                {showStats ? <EyeOff size={16} /> : <Eye size={16} />}
-                <span>{showStats ? 'Hide Stats' : 'Show Stats'}</span>
+                {showStats ? <EyeOff size={14} /> : <Eye size={14} />}
               </button>
             </div>
 
-            {/* Vehicle list dropdown */}
+            {/* Vehicle Chip List Dropdown */}
             {showVehicleList && (
-              <div className="mt-3 pt-3 border-t border-slate-700/50">
-                <div className="flex items-center gap-2 mb-2">
-                  <MapPin size={12} className="text-cyan-400" />
-                  <span className="text-xs text-slate-300 font-medium uppercase tracking-wider">Active Vehicles ({snapshot?.vehicleCount ?? 0})</span>
+              <div className="mt-3 pt-2.5 border-t border-indigo-500/20">
+                <div className="flex items-center justify-between gap-2 mb-2 font-mono text-[11px] text-slate-400">
+                  <div className="flex items-center gap-1.5">
+                    <MapPin size={12} className="text-cyan-400" />
+                    <span>Active Vehicles ({snapshot?.vehicleCount ?? 0})</span>
+                  </div>
                   {selectedVehicleId && (
                     <button
-                      onClick={() => { onSelectVehicle(null); onToggleFollowAmbulance(); }}
-                      className="ml-auto text-[10px] text-slate-400 hover:text-white px-2 py-0.5 bg-slate-700 rounded"
+                      onClick={() => { onSelectVehicle(null); }}
+                      className="text-[10px] text-slate-400 hover:text-white px-2 py-0.5 bg-slate-800 rounded-md"
                     >
-                      Clear
+                      Clear Target
                     </button>
                   )}
                 </div>
-                <div className="max-h-28 overflow-y-auto flex flex-wrap gap-1.5">
+                <div className="max-h-24 overflow-y-auto flex flex-wrap gap-1.5">
                   {snapshot?.vehicles.map(v => (
                     <button
                       key={v.id}
-                      onClick={() => { onSelectVehicle(v.id === selectedVehicleId ? null : v.id); setShowVehicleList(false); }}
-                      className={`text-[10px] px-2 py-1 rounded-lg border transition-colors ${
+                      onClick={() => {
+                        onSelectVehicle(v.id === selectedVehicleId ? null : v.id);
+                        setShowVehicleList(false);
+                      }}
+                      className={`text-[10px] font-mono px-2 py-1 rounded-lg border transition ${
                         v.id === selectedVehicleId
-                          ? 'border-cyan-500/70 bg-cyan-900/30 text-cyan-300'
+                          ? 'border-cyan-400 bg-cyan-950 text-cyan-300 font-bold'
                           : v.isEmergency
-                            ? 'border-red-500/50 bg-red-900/20 text-red-300 hover:bg-red-900/30'
-                            : 'border-slate-600/50 bg-slate-800/50 text-slate-300 hover:bg-slate-700/60'
+                          ? 'border-rose-400 bg-rose-950 text-rose-300'
+                          : 'border-slate-800 bg-slate-900 text-slate-300 hover:border-slate-700'
                       }`}
                     >
                       {v.isEmergency ? '🚑' : v.kind === 'bus' ? '🚌' : v.kind === 'motorcycle' ? '🏍' : '🚗'} #{v.id}
@@ -296,90 +323,68 @@ export function ControlPanel({
               </div>
             )}
 
-            {/* Vehicle inspector */}
-            {selectedVehicle && (
-              <div className="mt-3 pt-3 border-t border-slate-700/50">
-                <div className="flex items-center gap-2 mb-2">
-                  <Car size={12} className="text-cyan-400" />
-                  <span className="text-xs text-slate-300 font-medium uppercase tracking-wider">
-                    Inspector — #{selectedVehicle.id} ({selectedVehicle.kind})
-                  </span>
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="bg-slate-800/60 rounded-lg p-2 text-center">
-                    <div className="text-lg font-bold text-white">{selectedVehicle.speed.toFixed(1)}</div>
-                    <div className="text-slate-400 text-[9px] uppercase tracking-wider">m/s</div>
-                  </div>
-                  <div className="bg-slate-800/60 rounded-lg p-2 text-center">
-                    <div className={`text-sm font-bold ${
-                      selectedVehicle.phase === 'approach' ? 'text-blue-400'
-                      : selectedVehicle.phase === 'intersection' ? 'text-amber-400'
-                      : 'text-green-400'
-                    }`}>{selectedVehicle.phase}</div>
-                    <div className="text-slate-400 text-[9px] uppercase tracking-wider">Phase</div>
-                  </div>
-                  <div className="bg-slate-800/60 rounded-lg p-2 text-center">
-                    <div className={`text-sm font-bold ${selectedVehicle.brakeLight ? 'text-red-400' : 'text-slate-400'}`}>
-                      {selectedVehicle.brakeLight ? 'ON' : 'OFF'}
-                    </div>
-                    <div className="text-slate-400 text-[9px] uppercase tracking-wider">Brake</div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Stats row */}
-            {showStats && (
-              <div className="mt-3 pt-3 border-t border-slate-700/50 grid grid-cols-4 gap-3">
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-white">{snapshot?.vehicleCount ?? 0}</div>
-                  <div className="text-slate-400 text-[9px] uppercase tracking-wider mt-0.5">Vehicles</div>
-                </div>
-                <div className="text-center">
-                  <div className={`text-2xl font-bold ${snapshot?.emergencyActive ? 'text-red-400' : 'text-slate-500'}`}>
-                    {snapshot?.emergencyActive ? 'ON' : 'OFF'}
-                  </div>
-                  <div className="text-slate-400 text-[9px] uppercase tracking-wider mt-0.5">Emergency</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-sm font-semibold text-slate-300 truncate">
-                    {emergencyPhaseLabel}
-                  </div>
-                  <div className="text-slate-400 text-[9px] uppercase tracking-wider mt-0.5">Phase</div>
-                </div>
-                <div className="text-center">
-                  <div className={`text-2xl font-bold ${paused ? 'text-amber-400' : 'text-green-400'}`}>
-                    {paused ? '⏸' : `${(snapshot?.simSpeed ?? 1).toFixed(2)}×`}
-                  </div>
-                  <div className="text-slate-400 text-[9px] uppercase tracking-wider mt-0.5">
-                    {paused ? 'Paused' : 'Speed'}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Emergency active message */}
-            {snapshot?.emergencyActive && (
-              <div className="mt-2 flex items-center gap-2 text-red-400 text-xs">
-                <div className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
-                <span>Emergency corridor active — ambulance en route
-                  {snapshot.emergencyApproach && ` (${snapshot.emergencyApproach})`}
+            {/* Compact Live Telemetry Bar */}
+            <div className={`mt-2.5 pt-2 border-t border-indigo-500/20 flex items-center justify-between font-mono text-[11px] text-slate-300 flex-wrap gap-2 ${showStats ? "block" : "flex"}`}>
+              <div className="flex items-center gap-3">
+                <span className="flex items-center gap-1.5">
+                  <Car size={13} className="text-indigo-400" />
+                  <span className="font-bold text-white">{snapshot?.vehicleCount ?? 0}</span>
+                  <span className="text-slate-400">Active</span>
                 </span>
+                <span className="text-slate-600">·</span>
+                <span className="flex items-center gap-1.5">
+                  <span className={`size-2 rounded-full ${snapshot?.emergencyActive ? 'bg-rose-500 animate-ping' : 'bg-emerald-400'}`} />
+                  <span className={snapshot?.emergencyActive ? 'text-rose-400 font-bold' : 'text-slate-300'}>
+                    {snapshot?.emergencyActive ? 'Corridor Preempted' : 'Normal Flow'}
+                  </span>
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2 text-slate-400 text-[10px]">
+                <span>Speed: <strong className="text-emerald-400">{(snapshot?.simSpeed ?? 1).toFixed(1)}x</strong></span>
+                <span>·</span>
+                <span>Click car to track</span>
+              </div>
+            </div>
+
+            {/* Extended Stats when toggled on */}
+            {showStats && (
+              <div className="mt-2 pt-2 border-t border-indigo-500/20 grid grid-cols-4 gap-2 text-center font-mono">
+                <div className="bg-slate-900/60 rounded-xl p-2">
+                  <div className="text-lg font-bold text-white">{snapshot?.vehicleCount ?? 0}</div>
+                  <div className="text-[9px] text-slate-400 uppercase">Vehicles</div>
+                </div>
+                <div className="bg-slate-900/60 rounded-xl p-2">
+                  <div className={`text-lg font-bold ${snapshot?.emergencyActive ? 'text-rose-400' : 'text-slate-500'}`}>
+                    {snapshot?.emergencyActive ? 'ACTIVE' : 'OFF'}
+                  </div>
+                  <div className="text-[9px] text-slate-400 uppercase">Corridor</div>
+                </div>
+                <div className="bg-slate-900/60 rounded-xl p-2">
+                  <div className="text-sm font-semibold text-slate-200 truncate mt-0.5">
+                    {snapshot?.emergencyActive ? 'Ambulance En Route' : 'Dynamic Signals'}
+                  </div>
+                  <div className="text-[9px] text-slate-400 uppercase">Phase</div>
+                </div>
+                <div className="bg-slate-900/60 rounded-xl p-2">
+                  <div className="text-lg font-bold text-emerald-400">
+                    {paused ? 'PAUSED' : `${(snapshot?.simSpeed ?? 1).toFixed(1)}x`}
+                  </div>
+                  <div className="text-[9px] text-slate-400 uppercase">Rate</div>
+                </div>
               </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* Side hint */}
-      <div className="absolute left-4 top-1/2 -translate-y-1/2 z-10 pointer-events-none">
-        <div className="bg-slate-900/60 backdrop-blur-sm rounded-lg px-3 py-2 border border-slate-700/30">
-          <p className="text-slate-400 text-[11px]">Drag to orbit · Scroll to zoom</p>
-          {followAmbulance && (
-            <p className="text-amber-400 text-[10px] mt-0.5">📷 Following ambulance</p>
-          )}
-          {selectedVehicleId && !followAmbulance && (
-            <p className="text-cyan-400 text-[10px] mt-0.5">📷 Following #{ selectedVehicleId}</p>
+      {/* Floating Interaction Hint */}
+      <div className="absolute left-4 top-1/2 -translate-y-1/2 z-10 pointer-events-none hidden sm:block">
+        <div className="bg-slate-950/70 backdrop-blur-md rounded-xl px-3 py-2 border border-indigo-500/25 shadow-lg dot-pattern-card">
+          <p className="text-slate-300 font-mono text-[10px]">Drag to orbit · Scroll to zoom</p>
+          <p className="text-indigo-300/80 font-mono text-[10px] mt-0.5">Click any vehicle to inspect</p>
+          {followAmbulance && snapshot?.emergencyActive && (
+            <p className="text-amber-400 font-mono text-[10px] mt-1 font-bold animate-pulse">📷 Tracking Ambulance</p>
           )}
         </div>
       </div>

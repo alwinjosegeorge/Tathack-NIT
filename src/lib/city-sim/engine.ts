@@ -59,6 +59,7 @@ export class TrafficEngine {
 
   constructor() {
     this.buildPathCache();
+    this.seedInitialVehicles();
   }
 
   private buildPathCache() {
@@ -66,6 +67,48 @@ export class TrafficEngine {
       for (const t of TURNS) {
         const key = `${a}-${t}`;
         this.pathCache.set(key, buildLanePath(a, t));
+      }
+    }
+  }
+
+  /**
+   * Seed the city with active traffic immediately on startup so there is zero delay.
+   */
+  private seedInitialVehicles() {
+    const initialDistances = [25, 65, 110, 155];
+    for (const approach of APPROACHES) {
+      for (const dist of initialDistances) {
+        if (this.vehicles.length >= 16) break;
+        const turn = randomTurn();
+        const kind = randomKind();
+        const path = this.getPath(approach, turn);
+        const specBase = VEHICLE_SPECS[kind];
+        const spec = { ...specBase, color: randomCarColor() };
+
+        const u = Math.min(0.9, Math.max(0.05, dist / path.length));
+        const pos = new THREE.Vector3();
+        path.curve.getPointAt(u, pos);
+        pos.y = spec.wheelRadius;
+
+        const tangent = path.curve.getTangentAt(u).normalize();
+        const heading = Math.atan2(tangent.x, tangent.z);
+
+        const vehicle: VehicleState = {
+          id: nextVehicleId++,
+          kind,
+          spec,
+          path,
+          distance: dist,
+          speed: spec.maxSpeed * (0.6 + Math.random() * 0.3),
+          isEmergency: false,
+          position: pos,
+          heading,
+          targetHeading: heading,
+          phase: dist < (ROAD_LENGTH - STOP_LINE_OFFSET) ? 'approach' : 'intersection',
+          brakeLight: false,
+          spawnedAt: 0,
+        };
+        this.vehicles.push(vehicle);
       }
     }
   }
@@ -94,8 +137,9 @@ export class TrafficEngine {
     this.ambulanceId = null;
     this.spawnTimer = 0;
     this.simTime = 0;
-    this.nextSpawnIn = 2;
+    this.nextSpawnIn = 1.0;
     nextVehicleId = 1;
+    this.seedInitialVehicles();
   }
 
   // ---- Signal queries ----
@@ -255,11 +299,27 @@ export class TrafficEngine {
   activateEmergency(approach?: Direction) {
     if (this.emergencyActive) return;
     this.emergencyActive = true;
-    this.emergencyPhase = 1;
+    this.emergencyPhase = 2; // Jump immediately to corridor green & dispatch
     this.emergencyTimer = 0;
-    this.emergencyApproach = approach ?? randomApproach();
+    this.emergencyApproach = approach ?? 'south';
     this.ambulanceSpawned = false;
     this.ambulanceId = null;
+
+    // Immediately preempt signals: green for approach, red for other traffic
+    for (const g of this.signalGroups) {
+      if (g.approaches.includes(this.emergencyApproach)) {
+        g.state = 'green';
+        g.timer = 0;
+        g.phaseRemaining = 60;
+      } else {
+        g.state = 'red';
+        g.timer = 0;
+        g.phaseRemaining = 99;
+      }
+    }
+
+    // Spawn ambulance instantly with zero delay
+    this.spawnAmbulance();
   }
 
   deactivateEmergency() {
