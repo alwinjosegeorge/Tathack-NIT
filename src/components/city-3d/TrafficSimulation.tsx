@@ -1,6 +1,6 @@
-import { useRef, useMemo, useReducer, useCallback } from 'react';
+import { useRef, useMemo, useReducer, useCallback, Suspense } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { OrbitControls, Environment, ContactShadows } from '@react-three/drei';
+import { OrbitControls, ContactShadows } from '@react-three/drei';
 import * as THREE from 'three';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { TrafficEngine } from '@/lib/city-sim/engine';
@@ -271,11 +271,11 @@ function SceneContent({
 
   return (
     <>
-      {/* Lighting */}
-      <ambientLight intensity={0.6} color="#b0c8de" />
+      {/* Standalone ambient & hemisphere lighting (no external network dependencies) */}
+      <ambientLight intensity={0.7} color="#dbeafe" />
       <directionalLight
         position={[80, 100, 40]}
-        intensity={1.5}
+        intensity={1.8}
         castShadow
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
@@ -288,10 +288,7 @@ function SceneContent({
         shadow-bias={-0.0002}
         color="#fff4e0"
       />
-      <hemisphereLight args={['#87ceeb', '#3a4a30', 0.5]} />
-
-      {/* Environment for reflections */}
-      <Environment preset="city" />
+      <hemisphereLight args={['#93c5fd', '#334155', 0.6]} />
 
       {/* Road network */}
       <RoadNetwork />
@@ -356,16 +353,18 @@ export function TrafficSimulation({
       dpr={[1, 2]}
     >
       <fog attach="fog" args={['#a0b8c8', 220, 650]} />
-      <SceneContent
-        engine={engine}
-        onSnapshot={onSnapshot}
-        followAmbulance={followAmbulance}
-        selectedVehicleId={selectedVehicleId}
-        incidents={incidents}
-        recurrences={recurrences}
-        selectedIncidentId={selectedIncidentId}
-        onSelectIncident={onSelectIncident}
-      />
+      <Suspense fallback={null}>
+        <SceneContent
+          engine={engine}
+          onSnapshot={onSnapshot}
+          followAmbulance={followAmbulance}
+          selectedVehicleId={selectedVehicleId}
+          incidents={incidents}
+          recurrences={recurrences}
+          selectedIncidentId={selectedIncidentId}
+          onSelectIncident={onSelectIncident}
+        />
+      </Suspense>
       <OrbitControls
         enablePan
         enableZoom

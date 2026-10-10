@@ -6,9 +6,9 @@ import { AgentReasoningStream } from "@/components/agent-reasoning-stream";
 import { ExplainabilityBars } from "@/components/explainability-bars";
 import { GlassCard, LiveBadge, SectionHeader, SeverityChip } from "@/components/ui-kit";
 import { useSentinelStore } from "@/lib/store";
-import { useState } from "react";
+import { useState, Component, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
-import { Boxes, Map } from "lucide-react";
+import { Boxes, Map, AlertCircle, RefreshCw } from "lucide-react";
 
 export const Route = createFileRoute("/map")({
   head: () => ({
@@ -21,6 +21,39 @@ export const Route = createFileRoute("/map")({
   }),
   component: MapPage,
 });
+
+interface ErrorBoundaryProps {
+  fallback: (error: Error, reset: () => void) => ReactNode;
+  children: ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class MapErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  state: ErrorBoundaryState = { hasError: false, error: null };
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: any) {
+    console.error("3D Digital Twin Error boundary:", error, errorInfo);
+  }
+
+  reset = () => {
+    this.setState({ hasError: false, error: null });
+  };
+
+  render() {
+    if (this.state.hasError && this.state.error) {
+      return this.props.fallback(this.state.error, this.reset);
+    }
+    return this.props.children;
+  }
+}
 
 const layers = [
   { key: "buildings", label: "Buildings (3D)" },
@@ -97,7 +130,33 @@ function MapPage() {
         <div className="grid gap-4 lg:grid-cols-3">
           <GlassCard className="lg:col-span-2 !p-0 overflow-hidden relative min-h-[640px]">
             {viewMode === "3d" ? (
-              <City3DDigitalTwin height={640} activeLayers={active} />
+              <MapErrorBoundary
+                fallback={(err, reset) => (
+                  <div className="h-[640px] flex flex-col items-center justify-center bg-slate-950 text-slate-300 p-6 text-center space-y-3">
+                    <AlertCircle className="size-8 text-amber-500 animate-pulse" />
+                    <p className="text-sm font-semibold text-foreground">3D Graphics Context Notification</p>
+                    <p className="text-xs text-muted-foreground max-w-md">
+                      {err.message || "WebGL initialization was deferred by the browser graphics pipeline."}
+                    </p>
+                    <div className="flex gap-2 pt-2">
+                      <button
+                        onClick={reset}
+                        className="flex items-center gap-1 px-3.5 py-1.5 rounded-full bg-secondary text-xs font-medium hover:bg-secondary/80 transition-colors cursor-pointer"
+                      >
+                        <RefreshCw className="size-3" /> Retry 3D Scene
+                      </button>
+                      <button
+                        onClick={() => setViewMode("2d")}
+                        className="px-3.5 py-1.5 rounded-full bg-primary text-primary-foreground text-xs font-medium hover:brightness-110 transition-all cursor-pointer"
+                      >
+                        Switch to 2D Map
+                      </button>
+                    </div>
+                  </div>
+                )}
+              >
+                <City3DDigitalTwin height={640} activeLayers={active} />
+              </MapErrorBoundary>
             ) : (
               <CityMap height={640} activeLayers={active} />
             )}
