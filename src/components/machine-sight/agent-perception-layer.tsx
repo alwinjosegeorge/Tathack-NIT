@@ -1,4 +1,4 @@
-// Oriented 3D Bounding Boxes, Projected Monospace Screen Tags, and Dynamic Vehicle Meshes
+// Oriented 3D Bounding Boxes, Low-Poly Agent Meshes (Cars, Pedestrians, Cyclists, Ambulance), and Monospace Tags
 import React, { useRef, useMemo } from "react";
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
@@ -39,7 +39,7 @@ export function AgentPerceptionLayer({
         />
       ))}
 
-      {/* Screen-space Monospace Tags */}
+      {/* Screen-space Monospace Tags matching video */}
       {culledAgents.map((agent) => (
         <AgentScreenTag
           key={`tag-${agent.id}`}
@@ -64,7 +64,6 @@ function SingleAgentMesh({
   sensorMode: 0 | 1 | 2;
 }) {
   const groupRef = useRef<THREE.Group>(null);
-  const isAmbulance = agent.type === "ambulance";
 
   useFrame(() => {
     if (groupRef.current) {
@@ -76,35 +75,37 @@ function SingleAgentMesh({
 
   // Bounding box wireframe color
   const bboxColor = useMemo(() => {
-    if (agent.hasTtcWarning) return "#ef4444"; // Red flashing alert
-    if (isSelected) return "#38bdf8"; // Cyan selected
-    if (isAmbulance) return "#ea580c"; // Electric orange lead
-    if (sensorMode === 0) return "#00f0ff"; // LIDAR Cyan
-    if (sensorMode === 1) return "#38bdf8"; // Segment Sky
-    return "#2dd4bf"; // Depth Teal
-  }, [agent.hasTtcWarning, isSelected, isAmbulance, sensorMode]);
+    if (agent.hasTtcWarning) return "#ef4444"; // Flashing red alert
+    if (isSelected) return "#38bdf8";          // Cyan selected
+    if (agent.type === "ambulance") return "#ea580c"; // Electric orange lead
+    if (agent.type === "pedestrian") return "#a855f7"; // Magenta/Purple for pedestrian
+    if (agent.type === "cyclist") return "#10b981";    // Emerald for bicycle
+    if (sensorMode === 0) return "#00f0ff";    // LIDAR Cyan
+    if (sensorMode === 1) return "#38bdf8";    // Segment Sky
+    return "#2dd4bf";                          // Depth Teal
+  }, [agent.hasTtcWarning, isSelected, agent.type, sensorMode]);
 
   return (
     <group ref={groupRef} onClick={(e) => { e.stopPropagation(); onSelect(); }}>
       {/* 1. Oriented 3D Bounding Box (Sensor Perception) */}
-      <mesh position={[0, agent.dimensions[1] / 2 - 0.4, 0]}>
+      <mesh position={[0, agent.dimensions[1] / 2 - 0.2, 0]}>
         <boxGeometry args={agent.dimensions} />
         <meshBasicMaterial
           color={bboxColor}
           wireframe
           transparent
-          opacity={agent.hasTtcWarning ? 0.95 : (isSelected ? 0.9 : 0.45)}
+          opacity={agent.hasTtcWarning ? 0.95 : (isSelected ? 0.9 : 0.4)}
         />
       </mesh>
 
-      {/* 2. Vehicle Body Geometry */}
-      {isAmbulance ? (
+      {/* 2. Agent 3D Geometry */}
+      {agent.type === "ambulance" ? (
         <group position={[0, 0, 0]}>
           {/* Main Cabin */}
           <mesh position={[0, 0.6, 0]} castShadow>
             <boxGeometry args={[4.6, 1.8, 1.9]} />
             <meshStandardMaterial
-              color={sensorMode === 1 ? "#ea580c" : (sensorMode === 0 ? "#111827" : "#0d9488")}
+              color={sensorMode === 1 ? "#ea580c" : (sensorMode === 0 ? "#0f172a" : "#0d9488")}
               roughness={0.2}
             />
           </mesh>
@@ -115,17 +116,48 @@ function SingleAgentMesh({
             <meshStandardMaterial color="#0284c7" roughness={0.1} />
           </mesh>
 
-          {/* Flashing Emergency Lightbar (Red/Blue alternating) */}
+          {/* Dual Flashing Emergency Lightbar */}
           <EmergencyLightbar />
+        </group>
+      ) : agent.type === "pedestrian" ? (
+        <group position={[0, 0, 0]}>
+          {/* Torso & Legs */}
+          <mesh position={[0, 0.7, 0]}>
+            <cylinderGeometry args={[0.25, 0.25, 1.2, 8]} />
+            <meshStandardMaterial color={sensorMode === 1 ? "#a855f7" : (sensorMode === 0 ? "#1e293b" : "#14b8a6")} />
+          </mesh>
+          {/* Head */}
+          <mesh position={[0, 1.5, 0]}>
+            <sphereGeometry args={[0.22, 12, 12]} />
+            <meshStandardMaterial color="#fbbf24" />
+          </mesh>
+        </group>
+      ) : agent.type === "cyclist" ? (
+        <group position={[0, 0, 0]}>
+          {/* Bike Frame */}
+          <mesh position={[0, 0.4, 0]}>
+            <boxGeometry args={[1.6, 0.4, 0.3]} />
+            <meshStandardMaterial color="#10b981" />
+          </mesh>
+          {/* Rider */}
+          <mesh position={[-0.1, 0.9, 0]}>
+            <cylinderGeometry args={[0.2, 0.2, 0.9, 8]} />
+            <meshStandardMaterial color={sensorMode === 1 ? "#06b6d4" : "#1e293b"} />
+          </mesh>
+          {/* Helmet */}
+          <mesh position={[-0.1, 1.5, 0]}>
+            <sphereGeometry args={[0.2, 12, 12]} />
+            <meshStandardMaterial color="#f59e0b" />
+          </mesh>
         </group>
       ) : (
         <group position={[0, 0, 0]}>
-          {/* Car Chassis */}
+          {/* Car Body */}
           <mesh position={[0, 0.35, 0]} castShadow>
             <boxGeometry args={[3.8, 1.0, 1.7]} />
             <meshStandardMaterial
               color={sensorMode === 1 ? "#0284c7" : (sensorMode === 0 ? "#1e293b" : "#14b8a6")}
-              roughness={0.4}
+              roughness={0.3}
             />
           </mesh>
 
@@ -134,7 +166,7 @@ function SingleAgentMesh({
             <boxGeometry args={[2.0, 0.7, 1.4]} />
             <meshStandardMaterial
               color={sensorMode === 1 ? "#0f172a" : "#0284c7"}
-              roughness={0.2}
+              roughness={0.1}
               transparent
               opacity={0.8}
             />
@@ -144,8 +176,8 @@ function SingleAgentMesh({
 
       {/* Target Marker Ring when Selected */}
       {isSelected && (
-        <mesh position={[0, -0.4, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-          <ringGeometry args={[2.6, 2.9, 32]} />
+        <mesh position={[0, -0.3, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[2.5, 2.8, 32]} />
           <meshBasicMaterial color="#38bdf8" side={THREE.DoubleSide} />
         </mesh>
       )}
@@ -179,7 +211,7 @@ function EmergencyLightbar() {
   );
 }
 
-// Projected Screen Monospace Tag
+// Projected Screen Monospace Tag matching the reference video layout
 function AgentScreenTag({
   agent,
   isSelected,
@@ -189,11 +221,22 @@ function AgentScreenTag({
   isSelected: boolean;
   onSelect: () => void;
 }) {
+  const dotColor = useMemo(() => {
+    if (agent.hasTtcWarning) return "bg-red-500 animate-ping";
+    if (agent.statusBadge === "WAIT") return "bg-sky-400";
+    if (agent.type === "ambulance") return "bg-orange-500 animate-pulse";
+    return "bg-emerald-400";
+  }, [agent.hasTtcWarning, agent.statusBadge, agent.type]);
+
   return (
     <Html
-      position={[agent.position[0], agent.position[1] + (agent.type === "ambulance" ? 2.6 : 2.0), agent.position[2]]}
+      position={[
+        agent.position[0],
+        agent.position[1] + (agent.type === "ambulance" ? 2.8 : agent.type === "pedestrian" ? 2.1 : 2.0),
+        agent.position[2],
+      ]}
       center
-      distanceFactor={100}
+      distanceFactor={90}
       zIndexRange={[80, 0]}
     >
       <button
@@ -201,29 +244,21 @@ function AgentScreenTag({
           e.stopPropagation();
           onSelect();
         }}
-        className={`pointer-events-auto cursor-pointer select-none rounded border px-1.5 py-0.5 font-mono text-[9px] font-bold tracking-tight shadow-md backdrop-blur-md transition-all ${
+        className={`pointer-events-auto cursor-pointer select-none rounded-md border px-2 py-0.5 font-mono text-[10px] font-bold tracking-tight shadow-md backdrop-blur-md transition-all ${
           agent.hasTtcWarning
-            ? "border-red-500 bg-red-950/90 text-red-300 animate-pulse"
+            ? "border-red-500 bg-red-950/90 text-red-200 animate-pulse"
             : isSelected
-            ? "border-cyan-400 bg-cyan-950/90 text-cyan-200 ring-2 ring-cyan-400/50"
+            ? "border-cyan-400 bg-cyan-950/95 text-cyan-200 ring-2 ring-cyan-400/60 scale-105"
             : agent.type === "ambulance"
-            ? "border-orange-500 bg-orange-950/90 text-orange-200"
-            : "border-slate-700/80 bg-slate-950/80 text-slate-300 hover:border-slate-500"
+            ? "border-orange-500/80 bg-orange-950/90 text-orange-200"
+            : "border-slate-800/80 bg-slate-950/85 text-slate-200 hover:border-slate-600 hover:bg-slate-900"
         }`}
       >
-        <span className="flex items-center gap-1">
-          <span
-            className={`size-1 rounded-full ${
-              agent.hasTtcWarning
-                ? "bg-red-500 animate-ping"
-                : agent.statusBadge === "WAIT"
-                ? "bg-amber-400"
-                : "bg-emerald-400"
-            }`}
-          />
+        <span className="flex items-center gap-1.5 whitespace-nowrap">
+          <span className={`size-1.5 rounded-full ${dotColor}`} />
           <span>{agent.label}</span>
-          <span className="text-slate-400">·</span>
-          <span>{agent.speedKmh} km/h</span>
+          <span className="text-slate-500 font-normal">·</span>
+          <span className="font-medium text-slate-300">{agent.speedKmh} km/h</span>
         </span>
       </button>
     </Html>

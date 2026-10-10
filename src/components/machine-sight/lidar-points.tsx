@@ -31,21 +31,20 @@ export function LidarPoints({ simRef, zoneCenter, zoneRadius, sensorMode, lowQua
     ROAD_SEGMENTS.forEach((seg) => {
       const step = lowQuality ? 6 : 3;
       const count = Math.floor(seg.length / step);
-      for (let i = 0; i <= count; i++) {
-        const offset = i * step;
-        let px = seg.startX;
-        let pz = seg.startZ;
+      const perpAngle = seg.heading + Math.PI / 2;
+      const nx = Math.cos(perpAngle);
+      const nz = Math.sin(perpAngle);
 
-        if (seg.direction === "east") px += offset;
-        else if (seg.direction === "south") pz += offset;
-        else if (seg.direction === "north") pz -= offset;
+      for (let i = 0; i <= count; i++) {
+        const t = i / count;
+        const px = seg.start[0] + (seg.end[0] - seg.start[0]) * t;
+        const pz = seg.start[1] + (seg.end[1] - seg.start[1]) * t;
+
+        const halfWidth = seg.width / 2;
 
         // Left curb and right curb
-        const perpX = seg.direction === "east" || seg.direction === "west" ? 0 : seg.width / 2;
-        const perpZ = seg.direction === "east" || seg.direction === "west" ? seg.width / 2 : 0;
-
-        addPoint(px + perpX, 0.15, pz + perpZ, 0.0, 0.85, 1.0);
-        addPoint(px - perpX, 0.15, pz - perpZ, 0.0, 0.85, 1.0);
+        addPoint(px + nx * halfWidth, 0.15, pz + nz * halfWidth, 0.0, 0.85, 1.0);
+        addPoint(px - nx * halfWidth, 0.15, pz - nz * halfWidth, 0.0, 0.85, 1.0);
 
         // Center line dots
         if (i % 2 === 0) {
@@ -75,7 +74,6 @@ export function LidarPoints({ simRef, zoneCenter, zoneRadius, sensorMode, lowQua
         for (let s = 1; s <= slices; s++) {
           const y = (s / slices) * height;
           const half = 10;
-          // 4 corners & edges
           for (let e = -half; e <= half; e += (lowQuality ? 5 : 2.5)) {
             addPoint(cx + e, y, cz - half, 0.1, 0.5, 0.9);
             addPoint(cx + e, y, cz + half, 0.1, 0.5, 0.9);
@@ -88,7 +86,7 @@ export function LidarPoints({ simRef, zoneCenter, zoneRadius, sensorMode, lowQua
 
     // 3. Junction Grid Points
     CORRIDOR_JUNCTION_NODES.forEach((jn) => {
-      const half = jn.boxSize / 2;
+      const half = 8;
       for (let x = -half; x <= half; x += 4) {
         for (let z = -half; z <= half; z += 4) {
           addPoint(jn.x + x, 0.12, jn.z + z, 0.1, 0.9, 0.5);
@@ -126,11 +124,9 @@ export function LidarPoints({ simRef, zoneCenter, zoneRadius, sensorMode, lowQua
           vec4 worldPos = modelMatrix * vec4(position, 1.0);
           float dist = length(worldPos.xz - uZoneCenter);
 
-          // Alpha fade based on distance from zone center
           if (dist > uZoneRadius || uSensorMode != 0) {
             vAlpha = 0.0;
           } else {
-            // Concentric scan pulse wave
             float scan = sin(dist * 0.5 - uTime * 6.0) * 0.5 + 0.5;
             vAlpha = smoothstep(uZoneRadius, uZoneRadius - 8.0, dist) * (0.35 + scan * 0.65);
           }
@@ -146,7 +142,6 @@ export function LidarPoints({ simRef, zoneCenter, zoneRadius, sensorMode, lowQua
 
         void main() {
           if (vAlpha <= 0.01) discard;
-          // Circular point
           vec2 coord = gl_PointCoord - vec2(0.5);
           if (length(coord) > 0.5) discard;
           gl_FragColor = vec4(vColor, vAlpha);

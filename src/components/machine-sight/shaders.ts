@@ -1,16 +1,16 @@
-// Custom GLSL Shaders for Machine Sight: Clay City, LIDAR, Semantic Segments, Teal Depth & Dissolve
+// Custom GLSL Shaders for Machine Sight: Clay City, LIDAR, Semantic Segments, Teal Depth & Pixelated Grid Dissolve
 import * as THREE from "three";
 
 export const MultiSensorShader = {
   uniforms: {
     uZoneCenter: { value: new THREE.Vector2(0, 0) },
-    uZoneRadius: { value: 60.0 },
+    uZoneRadius: { value: 65.0 },
     uSensorMode: { value: 0 }, // 0: LIDAR, 1: SEGMENTS, 2: DEPTH
     uTime: { value: 0.0 },
     uSemanticType: { value: 0 }, // 0: Ground, 1: Road, 2: Sidewalk, 3: Building, 4: Car, 5: Ambulance, 6: Signal
-    uClayBaseColor: { value: new THREE.Color("#e5e7eb") },
+    uClayBaseColor: { value: new THREE.Color("#e5e3df") },
     uSegmentColor: { value: new THREE.Color("#334155") },
-    uLightDir: { value: new THREE.Vector3(0.5, 0.8, 0.3).normalize() },
+    uLightDir: { value: new THREE.Vector3(0.4, 0.9, 0.35).normalize() },
   },
 
   vertexShader: `
@@ -45,72 +45,85 @@ export const MultiSensorShader = {
     varying vec2 vUv;
     varying float vCameraDistance;
 
-    // Pseudo-random screen dither
-    float ditherGrid(vec2 pos) {
-      vec2 grid = floor(pos * 1.5);
-      return mod(grid.x + grid.y, 2.0);
+    // Ordered 4x4 Bayer Matrix for authentic pixelated / dithered square dissolve
+    float bayerDither(vec2 pos) {
+      vec2 gridPos = floor(pos / 2.2);
+      float x = mod(gridPos.x, 4.0);
+      float y = mod(gridPos.y, 4.0);
+      
+      // Bayer 4x4 matrix normalized to 0.0 .. 1.0
+      float m = 0.0;
+      if (y == 0.0) {
+        if (x == 0.0) m = 0.0; else if (x == 1.0) m = 8.0; else if (x == 2.0) m = 2.0; else m = 10.0;
+      } else if (y == 1.0) {
+        if (x == 0.0) m = 12.0; else if (x == 1.0) m = 4.0; else if (x == 2.0) m = 14.0; else m = 6.0;
+      } else if (y == 2.0) {
+        if (x == 0.0) m = 3.0; else if (x == 1.0) m = 11.0; else if (x == 2.0) m = 1.0; else m = 9.0;
+      } else {
+        if (x == 0.0) m = 15.0; else if (x == 1.0) m = 7.0; else if (x == 2.0) m = 13.0; else m = 5.0;
+      }
+      return m / 16.0;
     }
 
     void main() {
       // Distance from AI Vision Zone Center
       float distToCenter = length(vWorldPosition.xz - uZoneCenter);
 
-      // Clay Shading outside zone
+      // --- CLAY SHADING (Outside Zone) ---
       float NdotL = max(0.2, dot(vNormal, uLightDir));
       float topLight = max(0.0, vNormal.y) * 0.25;
-      vec3 clayColor = uClayBaseColor * (NdotL * 0.75 + topLight + 0.35);
+      vec3 clayColor = uClayBaseColor * (NdotL * 0.7 + topLight + 0.35);
 
-      // Soft ambient contact shadow simulation on clay ground
       if (uSemanticType == 0) {
-        clayColor = vec3(0.92, 0.93, 0.94);
+        clayColor = vec3(0.92, 0.91, 0.89); // Pale ground
       } else if (uSemanticType == 1) {
-        clayColor = vec3(0.82, 0.83, 0.86);
+        clayColor = vec3(0.85, 0.84, 0.82); // Road
       } else if (uSemanticType == 2) {
-        clayColor = vec3(0.88, 0.89, 0.91);
+        clayColor = vec3(0.89, 0.88, 0.86); // Sidewalk
+      } else if (uSemanticType == 3) {
+        clayColor = vec3(0.98, 0.97, 0.96) * (NdotL * 0.65 + 0.35); // White clay buildings
       }
 
-      // Inside Vision Zone: Compute Sensor View Color
+      // --- INSIDE VISION ZONE SENSOR MODES ---
       vec3 sensorColor = vec3(0.0);
 
       if (uSensorMode == 0) {
         // --- 1. LIDAR VIEW ---
         // Dark navy base
-        vec3 lidarBase = vec3(0.02, 0.04, 0.09);
+        vec3 lidarBase = vec3(0.02, 0.05, 0.10);
 
         // Concentric scan rings radiating outward
-        float ringDist = distToCenter;
-        float scanWave = sin(ringDist * 0.6 - uTime * 6.0);
-        float ringIntensity = smoothstep(0.7, 0.98, scanWave) * 0.85;
+        float scanWave = sin(distToCenter * 0.7 - uTime * 6.0);
+        float ringIntensity = smoothstep(0.7, 0.98, scanWave) * 0.9;
 
-        // Subtle wireframe / grid on surfaces
-        vec2 uvGrid = fract(vWorldPosition.xz * 0.5);
-        float gridLine = (step(0.95, uvGrid.x) + step(0.95, uvGrid.y)) * 0.25;
+        // Subtle structural grid on ground & buildings
+        vec2 uvGrid = fract(vWorldPosition.xz * 0.4);
+        float gridLine = (step(0.92, uvGrid.x) + step(0.92, uvGrid.y)) * 0.35;
 
-        // Semantic edge highlight
+        // Glowing edge highlights
         vec3 lidarEdge = vec3(0.0, 0.85, 1.0);
-        if (uSemanticType == 4) lidarEdge = vec3(0.2, 0.9, 0.6); // Traffic
-        if (uSemanticType == 5) lidarEdge = vec3(1.0, 0.35, 0.1); // Emergency
-        if (uSemanticType == 6) lidarEdge = vec3(1.0, 0.9, 0.0); // Signals
+        if (uSemanticType == 1) lidarEdge = vec3(0.05, 0.6, 0.8); // Road
+        if (uSemanticType == 4) lidarEdge = vec3(0.2, 0.9, 0.6);  // Traffic
+        if (uSemanticType == 5) lidarEdge = vec3(1.0, 0.4, 0.1);  // Emergency
+        if (uSemanticType == 6) lidarEdge = vec3(1.0, 0.85, 0.0); // Signal
 
-        sensorColor = lidarBase + lidarEdge * (ringIntensity * 0.8 + gridLine + 0.1);
+        sensorColor = lidarBase + lidarEdge * (ringIntensity * 0.75 + gridLine + 0.1);
 
-        // Building height gradient
         if (uSemanticType == 3) {
-          float heightFactor = clamp(vWorldPosition.y / 40.0, 0.0, 1.0);
-          sensorColor += mix(vec3(0.01, 0.03, 0.08), vec3(0.05, 0.3, 0.5), heightFactor);
+          float heightFactor = clamp(vWorldPosition.y / 35.0, 0.0, 1.0);
+          sensorColor += mix(vec3(0.01, 0.04, 0.09), vec3(0.04, 0.35, 0.55), heightFactor);
         }
 
       } else if (uSensorMode == 1) {
         // --- 2. SEMANTIC SEGMENTS VIEW ---
         vec3 segBase = uSegmentColor;
 
-        if (uSemanticType == 0) segBase = vec3(0.08, 0.12, 0.18); // Ground
-        else if (uSemanticType == 1) segBase = vec3(0.12, 0.16, 0.23); // Road
-        else if (uSemanticType == 2) segBase = vec3(0.24, 0.30, 0.38); // Sidewalk
+        if (uSemanticType == 0) segBase = vec3(0.09, 0.13, 0.19); // Ground
+        else if (uSemanticType == 1) segBase = vec3(0.14, 0.18, 0.25); // Road
+        else if (uSemanticType == 2) segBase = vec3(0.25, 0.31, 0.40); // Sidewalk
         else if (uSemanticType == 3) {
-          // Buildings: deep indigo with subtle floor banding
-          float floorBand = mod(vWorldPosition.y, 3.5) < 0.4 ? 0.85 : 1.0;
-          segBase = vec3(0.18, 0.22, 0.32) * floorBand;
+          float floorBand = mod(vWorldPosition.y, 3.2) < 0.35 ? 0.85 : 1.0;
+          segBase = vec3(0.20, 0.25, 0.35) * floorBand;
         } else if (uSemanticType == 4) {
           segBase = vec3(0.05, 0.65, 0.95); // Traffic Cars
         } else if (uSemanticType == 5) {
@@ -119,48 +132,46 @@ export const MultiSensorShader = {
           segBase = vec3(0.1, 0.9, 0.4); // Signal
         }
 
-        // Soft direct shading on segments
-        sensorColor = segBase * (NdotL * 0.4 + 0.7);
+        sensorColor = segBase * (NdotL * 0.45 + 0.65);
 
       } else {
-        // --- 3. DEPTH CONTOUR GRADIENT VIEW ---
-        // Teal / Cyan contour gradient based on world distance & height
-        float depthVal = clamp(vCameraDistance / 250.0, 0.0, 1.0);
-        float heightVal = clamp(vWorldPosition.y / 50.0, 0.0, 1.0);
+        // --- 3. DEPTH CONTOUR GRADIENT VIEW (Exact Video Reference) ---
+        // Topographic depth & height contours in teal and midnight blue
+        float depthVal = clamp(vCameraDistance / 260.0, 0.0, 1.0);
+        float heightVal = clamp(vWorldPosition.y / 45.0, 0.0, 1.0);
 
-        // Vibrant teal to dark ocean depth gradient
-        vec3 deepTeal = vec3(0.02, 0.15, 0.2);
-        vec3 midCyan = vec3(0.05, 0.65, 0.68);
-        vec3 brightTeal = vec3(0.4, 0.95, 0.85);
+        vec3 deepTeal = vec3(0.01, 0.12, 0.18);
+        vec3 midCyan = vec3(0.04, 0.55, 0.62);
+        vec3 brightTeal = vec3(0.35, 0.95, 0.85);
 
         vec3 depthGradient = mix(deepTeal, midCyan, 1.0 - depthVal);
-        depthGradient = mix(depthGradient, brightTeal, heightVal * 0.7);
+        depthGradient = mix(depthGradient, brightTeal, heightVal * 0.65);
 
-        // Animated / static contour lines
-        float contour = sin(vWorldPosition.y * 2.5 + distToCenter * 0.2);
-        float contourLine = smoothstep(0.85, 0.95, contour) * 0.6;
+        // Topographic Contour Lines hugging the geometry
+        float contourDist = distToCenter * 0.4 - uTime * 0.5;
+        float contourWave = sin(vWorldPosition.y * 3.0 + contourDist * 3.14159);
+        float contourLine = smoothstep(0.82, 0.96, contourWave) * 0.75;
 
-        sensorColor = depthGradient + vec3(contourLine);
+        sensorColor = depthGradient + vec3(contourLine * 0.4, contourLine * 0.85, contourLine);
       }
 
-      // Zone Boundary Dissolve & Pulsing Ring
-      float edgeDist = abs(distToCenter - uZoneRadius);
-      float pulseWave = sin(uTime * 4.0) * 0.5 + 0.5;
+      // --- PIXELATED / DITHERED SQUARE GRID DISSOLVE BOUNDARY ---
+      float dither = bayerDither(vWorldPosition.xz);
+      float edgeRange = 10.0;
+      float transition = clamp((distToCenter - (uZoneRadius - edgeRange)) / edgeRange, 0.0, 1.0);
+      
+      // Binary pixelated mask
+      float mask = step(transition, dither);
 
-      // Glowing border ring
-      vec3 borderRingColor = uSensorMode == 0 ? vec3(0.0, 0.9, 1.0) : (uSensorMode == 1 ? vec3(0.9, 0.4, 0.1) : vec3(0.2, 0.95, 0.8));
-      float ringGlow = smoothstep(2.5, 0.0, edgeDist) * (0.8 + pulseWave * 0.4);
+      // Subtle border pixel glow
+      float borderDist = abs(distToCenter - uZoneRadius);
+      vec3 borderGlowColor = uSensorMode == 0 ? vec3(0.0, 0.85, 1.0) : (uSensorMode == 1 ? vec3(0.9, 0.4, 0.1) : vec3(0.2, 0.95, 0.8));
+      float borderGlow = smoothstep(4.0, 0.0, borderDist) * 0.4;
 
-      // Pixelated / Dithered dissolve transition at boundary
-      float dither = ditherGrid(vWorldPosition.xz);
-      float transition = smoothstep(uZoneRadius - 3.0, uZoneRadius + 3.0, distToCenter);
-      float ditheredMask = step(dither * 0.6 + 0.2, 1.0 - transition);
-
-      // Blend Clay vs Sensor
-      vec3 finalColor = mix(clayColor, sensorColor, ditheredMask);
-
-      // Add border glowing ring
-      finalColor += borderRingColor * ringGlow;
+      vec3 finalColor = mix(clayColor, sensorColor, mask);
+      if (mask > 0.5) {
+        finalColor += borderGlowColor * borderGlow;
+      }
 
       gl_FragColor = vec4(finalColor, 1.0);
     }

@@ -40,7 +40,7 @@ export function ClayCityScene({ simRef, zoneCenter, zoneRadius, sensorMode }: Cl
       tree: createMat(3, "#e2e8f0", "#10b981"),
       hospital: createMat(3, "#ffffff", "#dc2626"),
     };
-  }, []);
+  }, [zoneRadius, sensorMode]);
 
   // Update uniforms every frame
   useFrame((state) => {
@@ -78,7 +78,7 @@ export function ClayCityScene({ simRef, zoneCenter, zoneRadius, sensorMode }: Cl
     return list;
   }, []);
 
-  // Trees (simple minimalist spheres with clay shading)
+  // Trees (minimalist spheres with clay shading)
   const trees = useMemo(() => {
     const list: [number, number, number][] = [];
     const coords: [number, number][] = [
@@ -103,51 +103,37 @@ export function ClayCityScene({ simRef, zoneCenter, zoneRadius, sensorMode }: Cl
       </mesh>
 
       {/* 2. Road Segments */}
-      {ROAD_SEGMENTS.map((seg) => (
-        <group key={seg.id} position={[seg.startX, 0.01, seg.startZ]}>
-          <mesh
-            position={[
-              seg.direction === "east" ? seg.length / 2 : 0,
-              0,
-              seg.direction === "south" ? seg.length / 2 : (seg.direction === "north" ? -seg.length / 2 : 0),
-            ]}
-            rotation={[
-              -Math.PI / 2,
-              0,
-              seg.direction === "east" || seg.direction === "west" ? 0 : Math.PI / 2,
-            ]}
-            material={shaderMaterials.road}
-          >
-            <planeGeometry args={[seg.length, seg.width]} />
-          </mesh>
+      {ROAD_SEGMENTS.map((seg) => {
+        const midX = (seg.start[0] + seg.end[0]) / 2;
+        const midZ = (seg.start[1] + seg.end[1]) / 2;
+        const angle = seg.heading;
 
-          {/* Sidewalks */}
-          <mesh
-            position={[
-              seg.direction === "east" ? seg.length / 2 : 0,
-              0.1,
-              seg.direction === "south" ? seg.length / 2 : 0,
-            ]}
-            rotation={[
-              -Math.PI / 2,
-              0,
-              seg.direction === "east" || seg.direction === "west" ? 0 : Math.PI / 2,
-            ]}
-            material={shaderMaterials.sidewalk}
-          >
-            <planeGeometry args={[seg.length, seg.width + 3]} />
-          </mesh>
-        </group>
-      ))}
+        return (
+          <group key={seg.id} position={[midX, 0.01, midZ]} rotation={[0, -angle, 0]}>
+            {/* Asphalt */}
+            <mesh rotation={[-Math.PI / 2, 0, 0]} material={shaderMaterials.road}>
+              <planeGeometry args={[seg.length, seg.width]} />
+            </mesh>
+
+            {/* Sidewalks (Left & Right) */}
+            <mesh position={[0, 0.1, seg.width / 2 + 0.8]} material={shaderMaterials.sidewalk}>
+              <boxGeometry args={[seg.length, 0.25, 1.6]} />
+            </mesh>
+            <mesh position={[0, 0.1, -seg.width / 2 - 0.8]} material={shaderMaterials.sidewalk}>
+              <boxGeometry args={[seg.length, 0.25, 1.6]} />
+            </mesh>
+          </group>
+        );
+      })}
 
       {/* 3. Junction Boxes */}
       {CORRIDOR_JUNCTION_NODES.map((jn) => (
         <group key={`jn-${jn.id}`} position={[jn.x, 0.02, jn.z]}>
           <mesh rotation={[-Math.PI / 2, 0, 0]} material={shaderMaterials.road}>
-            <planeGeometry args={[jn.boxSize, jn.boxSize]} />
+            <planeGeometry args={[16, 16]} />
           </mesh>
           <mesh position={[0, 0.08, 0]} rotation={[-Math.PI / 2, 0, 0]} material={shaderMaterials.sidewalk}>
-            <planeGeometry args={[jn.boxSize + 2, jn.boxSize + 2]} />
+            <planeGeometry args={[18, 18]} />
           </mesh>
         </group>
       ))}
@@ -227,12 +213,11 @@ function JunctionSignalPoles({
 
   return (
     <group position={[junctionNode.x, 0, junctionNode.z]}>
-      {/* 4 Signal Poles for 4 approaches */}
       {[
-        [-11, 0, -11],
-        [11, 0, -11],
-        [11, 0, 11],
-        [-11, 0, 11],
+        [-9, 0, -9],
+        [9, 0, -9],
+        [9, 0, 9],
+        [-9, 0, 9],
       ].map(([px, py, pz], i) => (
         <group key={`pole-${i}`} position={[px, py, pz]}>
           {/* Mast */}

@@ -1,7 +1,7 @@
-// Floating Agent Inspector Card with Turn Intent Probabilities, Signal Countdown & Telemetry
+// Floating Agent Inspector Card matching the reference video layout and typography
 import React from "react";
 import { PerceptionAgent } from "@/lib/sim/perception";
-import { X, ShieldCheck, AlertTriangle, Clock, Compass, Activity, Navigation, ArrowUpRight, ShieldAlert } from "lucide-react";
+import { X } from "lucide-react";
 
 interface AgentInspectorCardProps {
   agent: PerceptionAgent | null;
@@ -11,141 +11,115 @@ interface AgentInspectorCardProps {
 export function AgentInspectorCard({ agent, onClose }: AgentInspectorCardProps) {
   if (!agent) return null;
 
-  const isAmbulance = agent.type === "ambulance";
+  const isAlert = agent.statusBadge === "ALERT";
+  const isWait = agent.statusBadge === "WAIT";
 
   return (
-    <div className="absolute right-6 top-20 z-40 w-80 rounded-2xl border border-slate-700/80 bg-slate-950/90 p-4 font-mono text-xs text-slate-200 shadow-2xl backdrop-blur-xl animate-in fade-in zoom-in-95 duration-200">
-      {/* Card Header */}
-      <div className="flex items-start justify-between border-b border-slate-800 pb-3">
-        <div>
-          <div className="flex items-center gap-2">
+    <div className="pointer-events-auto absolute right-8 top-24 z-40 w-96 overflow-hidden rounded-2xl border border-slate-700/60 bg-white/95 text-slate-900 shadow-2xl backdrop-blur-xl animate-in fade-in zoom-in-95 duration-200 dark:bg-slate-950/95 dark:text-slate-100">
+      {/* Top Banner with Semantic Status Color */}
+      <div
+        className={`relative p-4 transition-colors ${
+          isAlert
+            ? "bg-rose-500 text-white"
+            : isWait
+            ? "bg-sky-500 text-white"
+            : "bg-emerald-400 text-slate-950 font-medium"
+        }`}
+      >
+        <div className="flex items-center justify-between">
+          <span
+            className={`inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[11px] font-mono font-bold uppercase tracking-wider ${
+              isAlert || isWait
+                ? "bg-white/20 text-white"
+                : "bg-slate-950/10 text-slate-950"
+            }`}
+          >
             <span
-              className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
-                agent.statusBadge === "ALERT"
-                  ? "bg-red-500/20 text-red-400 border border-red-500/40 animate-pulse"
-                  : agent.statusBadge === "WAIT"
-                  ? "bg-amber-500/20 text-amber-400 border border-amber-500/40"
-                  : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40"
+              className={`size-1.5 rounded-full ${
+                isAlert ? "bg-white animate-ping" : isWait ? "bg-white" : "bg-slate-950"
               }`}
-            >
-              {agent.statusBadge}
+            />
+            {agent.statusBadge}
+          </span>
+
+          <button
+            onClick={onClose}
+            className={`grid size-6 place-items-center rounded-lg transition ${
+              isAlert || isWait
+                ? "text-white/80 hover:bg-white/20 hover:text-white"
+                : "text-slate-950/70 hover:bg-slate-950/10 hover:text-slate-950"
+            }`}
+            title="Deselect (Esc)"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+
+        {/* Large Headline Title */}
+        <h2 className="mt-2 text-xl font-bold tracking-tight">{agent.headline}</h2>
+        {/* Descriptive sentence */}
+        <p className={`mt-1 text-xs leading-relaxed ${isAlert || isWait ? "text-white/90" : "text-slate-900/80"}`}>
+          {agent.explanation}
+        </p>
+      </div>
+
+      {/* Monospace Data Table */}
+      <div className="space-y-2.5 p-4 font-mono text-[12px] bg-slate-50/50 dark:bg-slate-900/40">
+        <div className="flex items-center justify-between border-b border-slate-200/80 pb-2 dark:border-slate-800/80">
+          <span className="text-slate-400">ID:</span>
+          <span className="font-semibold text-slate-900 dark:text-white">
+            {agent.typeLabel} · <span className="underline decoration-cyan-500">{agent.label}</span>
+          </span>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <span className="text-slate-400">speed:</span>
+          <span className="font-bold text-cyan-600 dark:text-cyan-400">{agent.speedKmh} km/h</span>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <span className="text-slate-400">intent:</span>
+          <span className="font-medium text-slate-700 dark:text-slate-300">
+            {agent.turnIntent.yielding > 0 ? (
+              <span className="text-amber-500 font-semibold">shoulder yield {agent.turnIntent.yielding}%</span>
+            ) : (
+              `straight ${agent.turnIntent.straight}% · left ${agent.turnIntent.left}%`
+            )}
+          </span>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <span className="text-slate-400">signal:</span>
+          <span className="font-medium text-emerald-600 dark:text-emerald-400">{agent.signalCountdown}</span>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <span className="text-slate-400">range:</span>
+          <span className="text-slate-700 dark:text-slate-300">{agent.distToNextJunctionM} m from node</span>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <span className="text-slate-400">approach:</span>
+          <span className="text-slate-700 dark:text-slate-300">{agent.approachName}</span>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <span className="text-slate-400">following:</span>
+          <span className="text-slate-700 dark:text-slate-300">{agent.followingText}</span>
+        </div>
+
+        {agent.type !== "ambulance" && (
+          <div className="flex items-center justify-between border-t border-slate-200/80 pt-2 dark:border-slate-800/80">
+            <span className="text-slate-400">dist to emergency:</span>
+            <span className="font-bold text-orange-600 dark:text-orange-400">
+              {Math.round(agent.distToAmbulance * 4.5)} m
             </span>
-            <h3 className="font-bold text-sm tracking-tight text-white">{agent.label}</h3>
-          </div>
-          <p className="mt-1 text-[11px] text-slate-400">{agent.statusHeadline}</p>
-        </div>
-        <button
-          onClick={onClose}
-          className="grid size-6 place-items-center rounded-lg border border-slate-800 text-slate-400 transition hover:bg-slate-800 hover:text-white"
-          title="Deselect (Esc)"
-        >
-          <X className="size-3.5" />
-        </button>
-      </div>
-
-      {/* Primary Metrics Grid */}
-      <div className="grid grid-cols-2 gap-2 py-3">
-        <div className="rounded-xl border border-slate-800/80 bg-slate-900/60 p-2.5">
-          <p className="text-[10px] uppercase tracking-wider text-slate-400">Velocity</p>
-          <p className="mt-1 font-display text-lg font-bold text-cyan-400">{agent.speedKmh} <span className="text-xs font-normal text-slate-400">km/h</span></p>
-        </div>
-        <div className="rounded-xl border border-slate-800/80 bg-slate-900/60 p-2.5">
-          <p className="text-[10px] uppercase tracking-wider text-slate-400">Following Gap</p>
-          <p className="mt-1 font-display text-lg font-bold text-emerald-400">{agent.followingGapMeters} <span className="text-xs font-normal text-slate-400">m</span></p>
-        </div>
-      </div>
-
-      {/* Turn Intent Probabilities (Deterministic Heuristic Engine) */}
-      <div className="space-y-2 rounded-xl border border-slate-800/80 bg-slate-900/40 p-3">
-        <div className="flex items-center justify-between text-[11px]">
-          <span className="font-semibold text-slate-300">Turn Intent Prediction</span>
-          <span className="text-[10px] text-slate-400">Graph Model</span>
-        </div>
-
-        {/* Straight Bar */}
-        <div>
-          <div className="flex justify-between text-[10px] text-slate-400">
-            <span>Straight (Corridor)</span>
-            <span className="font-bold text-cyan-300">{agent.turnIntent.straight}%</span>
-          </div>
-          <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-slate-800">
-            <div
-              className="h-full bg-cyan-500 rounded-full transition-all duration-300"
-              style={{ width: `${agent.turnIntent.straight}%` }}
-            />
-          </div>
-        </div>
-
-        {/* Left Turn Bar */}
-        <div>
-          <div className="flex justify-between text-[10px] text-slate-400">
-            <span>Left Branch</span>
-            <span className="font-bold text-indigo-300">{agent.turnIntent.left}%</span>
-          </div>
-          <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-slate-800">
-            <div
-              className="h-full bg-indigo-500 rounded-full transition-all duration-300"
-              style={{ width: `${agent.turnIntent.left}%` }}
-            />
-          </div>
-        </div>
-
-        {/* Right Turn / Yielding Bar */}
-        {agent.turnIntent.yielding > 0 ? (
-          <div>
-            <div className="flex justify-between text-[10px] text-slate-400">
-              <span>Shoulder Yield</span>
-              <span className="font-bold text-amber-300">{agent.turnIntent.yielding}%</span>
-            </div>
-            <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-slate-800">
-              <div
-                className="h-full bg-amber-500 rounded-full transition-all duration-300"
-                style={{ width: `${agent.turnIntent.yielding}%` }}
-              />
-            </div>
-          </div>
-        ) : (
-          <div>
-            <div className="flex justify-between text-[10px] text-slate-400">
-              <span>Right Branch</span>
-              <span className="font-bold text-sky-300">{agent.turnIntent.right}%</span>
-            </div>
-            <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-slate-800">
-              <div
-                className="h-full bg-sky-500 rounded-full transition-all duration-300"
-                style={{ width: `${agent.turnIntent.right}%` }}
-              />
-            </div>
           </div>
         )}
       </div>
 
-      {/* Junction & Signal Status */}
-      <div className="mt-3 space-y-1.5 text-[11px] border-t border-slate-800/80 pt-3">
-        <div className="flex items-center justify-between">
-          <span className="text-slate-400">Upcoming Signal</span>
-          <span className="font-semibold text-emerald-400">{agent.signalCountdown}</span>
-        </div>
-        <div className="flex items-center justify-between">
-          <span className="text-slate-400">Next Node</span>
-          <span className="text-slate-200">{agent.nextJunctionName} ({agent.distToNextJunctionM}m)</span>
-        </div>
-        {!isAmbulance && (
-          <div className="flex items-center justify-between">
-            <span className="text-slate-400">Distance to Ambulance</span>
-            <span className="font-semibold text-orange-400">{Math.round(agent.distToAmbulance * 4.5)} m</span>
-          </div>
-        )}
-        {agent.hasTtcWarning && (
-          <div className="mt-2 flex items-center gap-1.5 rounded-lg border border-red-500/40 bg-red-950/60 p-2 text-[10px] text-red-300">
-            <ShieldAlert className="size-4 shrink-0 text-red-400" />
-            <span>TTC Warning: Estimated {agent.ttcSec}s to collision threshold</span>
-          </div>
-        )}
-      </div>
-
-      <div className="mt-3 text-center">
-        <span className="text-[9px] text-slate-500">Press ESC or click empty ground to return to corridor tracking</span>
+      <div className="border-t border-slate-200/80 bg-slate-100/70 px-4 py-2 text-center text-[10px] font-mono text-slate-500 dark:border-slate-800/80 dark:bg-slate-900/60 dark:text-slate-400">
+        Click empty ground or press Esc to release
       </div>
     </div>
   );

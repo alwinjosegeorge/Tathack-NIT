@@ -10,11 +10,9 @@ import {
   PerceptionAgent,
   PerceptionAnalytics,
   TtcAlert,
-  computePairwiseTtc,
 } from "@/lib/sim/perception";
 import { useMission } from "@/lib/mission";
 import { toast } from "sonner";
-import { DecisionLogEntry } from "@/lib/sim/types";
 
 export const Route = createFileRoute("/machine-sight")({
   component: MachineSightPage,
@@ -30,7 +28,7 @@ function MachineSightPage() {
   const [compareMode, setCompareMode] = useState(false);
   const [lowQuality, setLowQuality] = useState(false);
   const [fps, setFps] = useState(60);
-  const [closeCallsCount, setCloseCallsCount] = useState(3);
+  const [closeCallsCount, setCloseCallsCount] = useState(0);
   const [activeAlerts, setActiveAlerts] = useState<TtcAlert[]>([]);
   const [currentAgents, setCurrentAgents] = useState<PerceptionAgent[]>([]);
   const [ambulanceAgent, setAmbulanceAgent] = useState<PerceptionAgent | null>(null);
@@ -69,13 +67,13 @@ function MachineSightPage() {
 
       if (e.key === "1") {
         setSensorMode("lidar");
-        toast.info("Sensor View: LIDAR 3D Point Cloud");
+        toast.info("Sensor View: 1. LIDAR 3D Point Cloud");
       } else if (e.key === "2") {
         setSensorMode("segments");
         toast.info("Sensor View: Semantic Segmentation");
       } else if (e.key === "3") {
         setSensorMode("depth");
-        toast.info("Sensor View: Teal Depth Contours");
+        toast.info("Sensor View: 3. Depth Contours");
       } else if (e.key === " " || e.code === "Space") {
         e.preventDefault();
         setIsSlowMotion((prev) => {
@@ -117,14 +115,14 @@ function MachineSightPage() {
           alerts.push({
             id: `alert-${agent.id}`,
             agentId1: agent.label,
-            agentId2: "AMBULANCE 01",
+            agentId2: "AMB 01",
             label1: agent.label,
-            label2: "AMBULANCE 01",
+            label2: "AMB 01",
             ttcSec: agent.ttcSec,
             closingSpeedKmh: Math.round(agent.speedKmh + amb.speedKmh),
             distanceMeters: Math.round(agent.distToAmbulance * 4.5),
             severity: agent.ttcSec < 1.6 ? "critical" : "warning",
-            detail: agent.isYielding ? "Yielding to shoulder" : "Obstruction approaching path",
+            detail: agent.isYielding ? "Yielding to left shoulder" : "Approaching corridor trajectory",
           });
         }
       });
@@ -163,21 +161,28 @@ function MachineSightPage() {
   // Telemetry metrics calculation
   const metrics = simRef.current?.getMetrics();
   const trackedCount = currentAgents.filter((a) => a.inZone).length;
+  const pedCount = currentAgents.filter((a) => a.inZone && a.type === "pedestrian").length || 16;
+  const carCount = currentAgents.filter((a) => a.inZone && a.type === "car").length || 19;
+  const cycCount = currentAgents.filter((a) => a.inZone && a.type === "cyclist").length || 8;
 
   const analytics: PerceptionAnalytics = {
-    trackedCount: trackedCount || 12,
+    pedCount,
+    carCount,
+    cycCount,
+    zoneRadiusM: 520.0,
+    trackedCount: trackedCount || 35,
     pointsCount: sensorMode === "lidar" ? (lowQuality ? 8400 : 14280) : 0,
     closeCallsCount,
     activeAlerts,
-    signalsPreempted: metrics?.signalsPreempted ?? 4,
-    corridorTimeSavedSec: metrics?.timeSavedSec ?? 28.4,
-    etaSec: metrics?.etaSec ?? 102,
+    signalsPreempted: metrics?.signalsPreempted ?? 8,
+    corridorTimeSavedSec: metrics?.timeSavedSec ?? 32.4,
+    etaSec: metrics?.etaSec ?? 94,
     fps,
   };
 
   return (
     <AppShell>
-      <div className="relative flex h-[calc(100vh-140px)] min-h-[640px] w-full flex-col overflow-hidden rounded-3xl border border-slate-800 bg-[#070b14] shadow-2xl">
+      <div className="relative flex h-[calc(100vh-120px)] min-h-[660px] w-full flex-col overflow-hidden rounded-3xl border border-slate-200/80 bg-[#e5e3df] shadow-2xl dark:border-slate-800 dark:bg-[#070b14]">
         {/* 3D R3F Canvas */}
         <MachineSightCanvas
           simRef={simRef}
@@ -212,6 +217,7 @@ function MachineSightPage() {
           onToggleLowQuality={() => setLowQuality((prev) => !prev)}
           decisionLogs={simRef.current?.decisionLogs ?? []}
           shiftHeld={shiftHeld}
+          selectedAgentLabel={selectedAgent?.label ?? null}
         />
       </div>
     </AppShell>
