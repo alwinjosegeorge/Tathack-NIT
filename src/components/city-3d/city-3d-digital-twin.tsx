@@ -65,18 +65,6 @@ export function City3DDigitalTwin({
     fetchRecurrenceAlerts().then((res) => setRecurrences(res.data));
   }, []);
 
-  if (!mounted || typeof window === "undefined" || !engineRef.current) {
-    return (
-      <div
-        style={{ height }}
-        className="w-full bg-slate-950 flex flex-col items-center justify-center text-slate-400 font-mono text-xs gap-3 rounded-2xl"
-      >
-        <div className="size-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-        <span>Initializing 3D Digital Twin City Model...</span>
-      </div>
-    );
-  }
-
   const handleSnapshot = useCallback((snap: ReturnType<TrafficEngine["getSnapshot"]>) => {
     setSnapshot(snap as SnapshotData);
   }, []);
@@ -165,6 +153,18 @@ export function City3DDigitalTwin({
     },
     [activeTab]
   );
+
+  if (!mounted || typeof window === "undefined" || !engineRef.current) {
+    return (
+      <div
+        style={{ height }}
+        className="w-full bg-slate-950 flex flex-col items-center justify-center text-slate-400 font-mono text-xs gap-3 rounded-2xl"
+      >
+        <div className="size-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+        <span>Initializing 3D Digital Twin City Model...</span>
+      </div>
+    );
+  }
 
   return (
     <div
