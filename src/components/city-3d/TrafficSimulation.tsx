@@ -1,6 +1,6 @@
 import { useRef, useMemo, useReducer, useCallback, Suspense } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { OrbitControls, ContactShadows } from '@react-three/drei';
+import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { TrafficEngine } from '@/lib/city-sim/engine';
@@ -311,14 +311,6 @@ function SceneContent({
         selectedVehicleId={selectedVehicleId}
       />
 
-      {/* Contact shadows */}
-      <ContactShadows
-        position={[0, 0.03, 0]}
-        opacity={0.25}
-        scale={600}
-        blur={3}
-        far={50}
-      />
     </>
   );
 }
@@ -352,6 +344,7 @@ export function TrafficSimulation({
       gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.1 }}
       dpr={[1, 2]}
     >
+      <color attach="background" args={['#a0b8c8']} />
       <fog attach="fog" args={['#a0b8c8', 220, 650]} />
       <Suspense fallback={null}>
         <SceneContent

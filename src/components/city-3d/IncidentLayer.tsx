@@ -1,6 +1,5 @@
 import { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { Html } from '@react-three/drei';
 import * as THREE from 'three';
 import type { IncidentMarker, RecurrenceAlert } from '@/lib/city-sim/types';
 import { statusColor, statusLabel } from '@/lib/city-sim/civicApi';
@@ -111,24 +110,18 @@ function IncidentPin({
           </mesh>
         )}
 
-        {/* HTML label */}
-        <Html
-          position={[0.7, 0.4, 0]}
-          style={{ pointerEvents: 'none', whiteSpace: 'nowrap' }}
-        >
-          <div style={{
-            background: 'rgba(0,0,0,0.75)',
-            color: '#fff',
-            fontSize: '10px',
-            padding: '2px 6px',
-            borderRadius: '4px',
-            border: `1px solid ${color}`,
-            lineHeight: 1.4,
-          }}>
-            <div style={{ color, fontWeight: 600 }}>{incident.type}</div>
-            <div style={{ color: '#aaa', fontSize: '9px' }}>{statusLabel(incident.status)}</div>
-          </div>
-        </Html>
+        {/* 3D Beacon marker */}
+        <mesh position={[0, 0.75, 0]} rotation={[Math.PI / 4, Math.PI / 4, 0]}>
+          <octahedronGeometry args={[0.3, 0]} />
+          <meshStandardMaterial
+            color={color}
+            emissive={color}
+            emissiveIntensity={selected ? 1.6 : 0.7}
+            metalness={0.3}
+            roughness={0.3}
+            toneMapped={false}
+          />
+        </mesh>
       </group>
 
       {/* Ground shadow circle */}
