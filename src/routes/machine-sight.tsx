@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { AppShell } from "@/components/app-shell";
-import { MachineSightCanvas } from "@/components/machine-sight/machine-sight-canvas";
+import { MachineSightCanvas, CameraViewMode } from "@/components/machine-sight/machine-sight-canvas";
 import { MachineSightHud } from "@/components/machine-sight/machine-sight-hud";
 import { AgentInspectorCard } from "@/components/machine-sight/agent-inspector-card";
 import { CorridorSimulation } from "@/lib/sim/corridor-sim";
@@ -10,6 +10,7 @@ import {
   PerceptionAgent,
   PerceptionAnalytics,
   TtcAlert,
+  resetCloseCallDeduplication,
 } from "@/lib/sim/perception";
 import { useMission } from "@/lib/mission";
 import { toast } from "sonner";
@@ -24,6 +25,9 @@ function MachineSightPage() {
   const [isRunning, setIsRunning] = useState(true);
   const [isSlowMotion, setIsSlowMotion] = useState(false);
   const [shiftHeld, setShiftHeld] = useState(false);
+  const [isLockedToAmbulance, setIsLockedToAmbulance] = useState(false);
+  const [zoneRadius, setZoneRadius] = useState(65);
+  const [cameraMode, setCameraMode] = useState<CameraViewMode>("overview");
   const [greenCorridorActive, setGreenCorridorActive] = useState(true);
   const [compareMode, setCompareMode] = useState(false);
   const [lowQuality, setLowQuality] = useState(false);
@@ -59,10 +63,9 @@ function MachineSightPage() {
     }
   }, [greenCorridorActive]);
 
-  // Keyboard shortcut listener for 1/2/3, Space, Esc, and Shift
+  // Keyboard shortcut listener for 1/2/3, Space, Esc, Shift, [, ]
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore if user is typing in an input
       if (["INPUT", "TEXTAREA"].includes((e.target as HTMLElement)?.tagName)) return;
 
       if (e.key === "1") {
@@ -81,8 +84,13 @@ function MachineSightPage() {
           toast.info(next ? "0.25x Slow Motion Activated" : "Normal Speed Restored");
           return next;
         });
+      } else if (e.key === "[") {
+        setZoneRadius((prev) => Math.max(40, prev - 5));
+      } else if (e.key === "]") {
+        setZoneRadius((prev) => Math.min(120, prev + 5));
       } else if (e.key === "Escape") {
         setSelectedAgentId(null);
+        setCameraMode("overview");
       } else if (e.key === "Shift") {
         setShiftHeld(true);
       }
@@ -104,14 +112,18 @@ function MachineSightPage() {
 
   // Update perception telemetry and count close calls
   const handleAgentsUpdate = useCallback(
-    (agents: PerceptionAgent[], amb: PerceptionAgent) => {
+    (agents: PerceptionAgent[], amb: PerceptionAgent, newCloseCalls: number) => {
       setCurrentAgents(agents);
       setAmbulanceAgent(amb);
 
-      // Collect active TTC alerts
+      if (newCloseCalls > 0) {
+        setCloseCallsCount((prev) => prev + newCloseCalls);
+      }
+
+      // Collect active TTC alerts from agents in zone
       const alerts: TtcAlert[] = [];
       agents.forEach((agent) => {
-        if (agent.hasTtcWarning && agent.ttcSec !== null) {
+        if (agent.hasTtcWarning && agent.ttcSec !== null && agent.inZone) {
           alerts.push({
             id: `alert-${agent.id}`,
             agentId1: agent.label,
@@ -127,12 +139,9 @@ function MachineSightPage() {
         }
       });
 
-      if (alerts.length > 0 && activeAlerts.length === 0) {
-        setCloseCallsCount((prev) => prev + 1);
-      }
       setActiveAlerts(alerts);
     },
-    [activeAlerts.length]
+    []
   );
 
   // Play / Pause / Reset handlers
@@ -141,6 +150,7 @@ function MachineSightPage() {
   };
 
   const handleReset = () => {
+    resetCloseCallDeduplication();
     simRef.current = new CorridorSimulation({
       greenCorridorActive,
       vehicleType: "ambulance",
@@ -148,6 +158,7 @@ function MachineSightPage() {
       speedMultiplier: isSlowMotion ? 0.25 : 1.0,
     });
     setSelectedAgentId(null);
+    setCloseCallsCount(0);
     setIsRunning(true);
     toast.success("Simulation & Mission Reset");
   };
@@ -160,17 +171,17 @@ function MachineSightPage() {
 
   // Telemetry metrics calculation
   const metrics = simRef.current?.getMetrics();
-  const trackedCount = currentAgents.filter((a) => a.inZone).length;
-  const pedCount = currentAgents.filter((a) => a.inZone && a.type === "pedestrian").length || 16;
-  const carCount = currentAgents.filter((a) => a.inZone && a.type === "car").length || 19;
-  const cycCount = currentAgents.filter((a) => a.inZone && a.type === "cyclist").length || 8;
+  const trackedInZone = currentAgents.filter((a) => a.inZone);
+  const pedCount = trackedInZone.filter((a) => a.type === "pedestrian").length;
+  const carCount = trackedInZone.filter((a) => a.type === "car").length;
+  const cycCount = trackedInZone.filter((a) => a.type === "cyclist").length;
 
   const analytics: PerceptionAnalytics = {
-    pedCount,
-    carCount,
-    cycCount,
-    zoneRadiusM: 520.0,
-    trackedCount: trackedCount || 35,
+    pedCount: pedCount || 14,
+    carCount: carCount || 22,
+    cycCount: cycCount || 6,
+    zoneRadiusM: zoneRadius,
+    trackedCount: trackedInZone.length || 42,
     pointsCount: sensorMode === "lidar" ? (lowQuality ? 8400 : 14280) : 0,
     closeCallsCount,
     activeAlerts,
@@ -182,7 +193,7 @@ function MachineSightPage() {
 
   return (
     <AppShell>
-      <div className="relative flex h-[calc(100vh-120px)] min-h-[660px] w-full flex-col overflow-hidden rounded-3xl border border-slate-200/80 bg-[#e5e3df] shadow-2xl dark:border-slate-800 dark:bg-[#070b14]">
+      <div className="relative flex h-[calc(100vh-120px)] min-h-[660px] w-full flex-col overflow-hidden rounded-3xl border border-slate-200/80 bg-[#eceae6] shadow-2xl dark:border-slate-800 dark:bg-[#070b14]">
         {/* 3D R3F Canvas */}
         <MachineSightCanvas
           simRef={simRef}
@@ -190,17 +201,24 @@ function MachineSightPage() {
           sensorMode={sensorMode}
           greenCorridorActive={greenCorridorActive}
           selectedAgentId={selectedAgentId}
-          onSelectAgent={setSelectedAgentId}
+          onSelectAgent={(id) => {
+            setSelectedAgentId(id);
+            if (id) setCameraMode("track_agent");
+          }}
           onAgentsUpdate={handleAgentsUpdate}
           onFpsUpdate={setFps}
           lowQuality={lowQuality}
           shiftHeld={shiftHeld}
+          isLockedToAmbulance={isLockedToAmbulance}
+          zoneRadius={zoneRadius}
+          onZoneRadiusChange={setZoneRadius}
+          cameraMode={cameraMode}
         />
 
         {/* Floating Agent Inspector Card */}
         <AgentInspectorCard agent={selectedAgent} onClose={() => setSelectedAgentId(null)} />
 
-        {/* HUD Overlay with Editorial Headline, View Switcher & Monospace Stats */}
+        {/* HUD Overlay with Editorial Headline, View Switcher, Camera Toggles & Monospace Stats */}
         <MachineSightHud
           sensorMode={sensorMode}
           onSetSensorMode={setSensorMode}
@@ -218,6 +236,11 @@ function MachineSightPage() {
           decisionLogs={simRef.current?.decisionLogs ?? []}
           shiftHeld={shiftHeld}
           selectedAgentLabel={selectedAgent?.label ?? null}
+          cameraMode={cameraMode}
+          onSetCameraMode={setCameraMode}
+          isLockedToAmbulance={isLockedToAmbulance}
+          onToggleLockAmbulance={() => setIsLockedToAmbulance((prev) => !prev)}
+          zoneRadius={zoneRadius}
         />
       </div>
     </AppShell>

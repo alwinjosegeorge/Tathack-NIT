@@ -1,4 +1,4 @@
-// Deterministic Multi-Sensor Perception, Intent Prediction & TTC Safety Engine
+// Deterministic Multi-Sensor Perception, Intent Prediction & Robust Pairwise TTC Safety Engine
 import { CorridorSimulation } from "./corridor-sim";
 import { CORRIDOR_JUNCTION_NODES } from "./road-graph";
 import { SimCar, EmergencyVehicle, Junction } from "./types";
@@ -38,9 +38,11 @@ export interface PerceptionAgent {
   approachName: string;
   turnIntent: TurnIntent;
   dimensions: [number, number, number]; // [length, height, width]
+  collisionRadius: number;
   hasTtcWarning: boolean;
   ttcSec: number | null;
   color: string;
+  laneIndex?: number;
 }
 
 export interface TtcAlert {
@@ -71,6 +73,13 @@ export interface PerceptionAnalytics {
   fps: number;
 }
 
+// Global deduplication registry for close-call events (5-second cooldown per unique pair)
+const recentCloseCallEvents = new Map<string, number>();
+
+export function resetCloseCallDeduplication() {
+  recentCloseCallEvents.clear();
+}
+
 // Compute deterministic turn intent from car lane, road topology, and yielding state
 export function computeAgentIntent(car: SimCar, nextJunction?: Junction): TurnIntent {
   if (car.isYielding) {
@@ -91,7 +100,6 @@ export function computeAgentIntent(car: SimCar, nextJunction?: Junction): TurnIn
     };
   }
 
-  // Derive intent from lane index
   const isTurn = car.isTurnVehicle;
   if (isTurn) {
     if (car.turnDirection === "left") {
@@ -109,91 +117,233 @@ export function computeAgentIntent(car: SimCar, nextJunction?: Junction): TurnIn
   }
 }
 
-// Calculate pairwise Time-To-Collision (TTC) using relative Euclidean position and velocity vectors
+/**
+ * Robust pairwise Time-To-Collision (TTC) calculation along line-of-sight.
+ * Prevents self-pair checks, ignores same-lane safe followings, and checks genuine closing vectors.
+ */
 export function computePairwiseTtc(
   pA: [number, number, number],
   vA: [number, number, number],
   radA: number,
   pB: [number, number, number],
   vB: [number, number, number],
-  radB: number
-): { isClosing: boolean; ttcSec: number | null; distance: number; closingSpeed: number } {
-  // Horizontal 2D plane (X, Z)
+  radB: number,
+  agentAInfo?: { id: string; laneIndex?: number; isYielding?: boolean },
+  agentBInfo?: { id: string; laneIndex?: number; isYielding?: boolean }
+): { isClosing: boolean; ttcSec: number | null; distance: number; closingSpeed: number; isHazard: boolean } {
+  // 1. Guard against self-pairing
+  if (agentAInfo && agentBInfo && agentAInfo.id === agentBInfo.id) {
+    return { isClosing: false, ttcSec: null, distance: 0, closingSpeed: 0, isHazard: false };
+  }
+
+  // 2. Relative displacement in 2D horizontal plane (X, Z)
   const dx = pB[0] - pA[0];
   const dz = pB[2] - pA[2];
-  const dist = Math.sqrt(dx * dx + dz * dz);
+  const dist = Math.hypot(dx, dz);
 
-  // Relative velocity vector (vB - vA)
+  if (dist < 0.001) {
+    return { isClosing: false, ttcSec: null, distance: 0, closingSpeed: 0, isHazard: false };
+  }
+
+  // 3. Normalized line-of-sight direction vector from A to B
+  const losX = dx / dist;
+  const losZ = dz / dist;
+
+  // 4. Relative velocity vector (vB - vA)
   const dvx = vB[0] - vA[0];
   const dvz = vB[2] - vA[2];
 
-  // Dot product of relative displacement (A -> B) and relative velocity of B relative to A
-  const dot = dx * dvx + dz * dvz;
-  const isClosing = dot < -0.01;
+  // 5. Closing speed along line of sight: - ( (pB - pA)/dist . (vB - vA) )
+  // If positive, distance is decreasing (they are approaching each other)
+  const closingSpeed = -(losX * dvx + losZ * dvz);
 
-  const relSpeedSq = dvx * dvx + dvz * dvz;
-  const relSpeed = Math.sqrt(relSpeedSq);
-
-  if (!isClosing || relSpeed < 0.2) {
-    return { isClosing: false, ttcSec: null, distance: dist, closingSpeed: 0 };
+  // 6. Ignore pairs with closing speed < 1.0 m/s (~3.6 km/h) or opening distances
+  if (closingSpeed < 1.0) {
+    return { isClosing: false, ttcSec: null, distance: Math.round(dist * 10) / 10, closingSpeed: 0, isHazard: false };
   }
 
-  const closingComponent = -dot / dist;
+  // 7. Check if vehicles are safely separated laterally (e.g. yielding car on shoulder)
+  if (agentAInfo?.isYielding || agentBInfo?.isYielding) {
+    const speedA = Math.hypot(vA[0], vA[2]);
+    const headingNormX = speedA > 0.1 ? vA[0] / speedA : 1.0;
+    const headingNormZ = speedA > 0.1 ? vA[2] / speedA : 0.0;
+    // Perpendicular distance relative to vehicle heading trajectory
+    const latSeparation = Math.abs(dx * (-headingNormZ) + dz * headingNormX);
+    if (latSeparation > 2.2) {
+      return {
+        isClosing: true,
+        ttcSec: null,
+        distance: Math.round(dist * 10) / 10,
+        closingSpeed: Math.round(closingSpeed * 3.6),
+        isHazard: false,
+      };
+    }
+  }
+
+  // 8. Safe car-following in same lane moving in same direction
+  if (
+    agentAInfo?.laneIndex !== undefined &&
+    agentBInfo?.laneIndex !== undefined &&
+    agentAInfo.laneIndex === agentBInfo.laneIndex
+  ) {
+    const speedA = Math.hypot(vA[0], vA[2]);
+    const speedB = Math.hypot(vB[0], vB[2]);
+    // If speeds are similar (< 2.5 m/s difference) and distance is safe (> 8m), ignore
+    if (Math.abs(speedA - speedB) < 2.5 && dist > 8.0) {
+      return {
+        isClosing: true,
+        ttcSec: null,
+        distance: Math.round(dist * 10) / 10,
+        closingSpeed: Math.round(closingSpeed * 3.6),
+        isHazard: false,
+      };
+    }
+  }
+
+  // 9. Bounding radii clearance
   const clearance = Math.max(0, dist - (radA + radB));
-  const ttc = closingComponent > 0.1 ? clearance / closingComponent : null;
+  const rawTtc = clearance / closingSpeed;
+
+  // Clamp absurd values: valid TTC between 0.0s and 10.0s
+  const ttcSec = rawTtc >= 0 && rawTtc <= 10.0 ? Math.round(rawTtc * 10) / 10 : null;
+  const isHazard = ttcSec !== null && ttcSec <= 2.5;
 
   return {
     isClosing: true,
-    ttcSec: ttc !== null && ttc < 20 ? Math.round(ttc * 10) / 10 : null,
+    ttcSec,
     distance: Math.round(dist * 10) / 10,
-    closingSpeed: Math.round(closingComponent * 3.6),
+    closingSpeed: Math.round(closingSpeed * 3.6),
+    isHazard,
   };
 }
 
-// Fixed sidewalks & crosswalk definitions for pedestrians and cyclists
-const SYNTHETIC_PEDESTRIANS = [
-  { id: "ped-01", base: [-160, 0.4, -48], dir: [0, 1], speed: 4.2, label: "PED 07" },
-  { id: "ped-02", base: [-145, 0.4, -58], dir: [1, 0], speed: 3.8, label: "PED 12" },
-  { id: "ped-03", base: [-60, 0.4, -48], dir: [0, 1], speed: 4.5, label: "PED 18" },
-  { id: "ped-04", base: [-40, 0.4, -58], dir: [1, 0], speed: 3.6, label: "PED 21" },
-  { id: "ped-05", base: [60, 0.4, -18], dir: [0, 1], speed: 4.0, label: "PED 34" },
-  { id: "ped-06", base: [80, 0.4, 2], dir: [1, 0], speed: 4.6, label: "PED 39" },
-  { id: "ped-07", base: [140, 0.4, 18], dir: [0, 1], speed: 3.9, label: "PED 44" },
-  { id: "ped-08", base: [160, 0.4, 2], dir: [-1, 0], speed: 4.1, label: "PED 52" },
-];
+/**
+ * Evaluates all unique pairs of agents in the vision zone, computes true TTC, and dedupes close calls.
+ */
+export function evaluateZoneSafety(
+  agents: PerceptionAgent[],
+  currentTimeSec: number
+): {
+  activeAlerts: TtcAlert[];
+  newCloseCallsCount: number;
+} {
+  const activeAlerts: TtcAlert[] = [];
+  let newCloseCallsCount = 0;
 
-const SYNTHETIC_CYCLISTS = [
-  { id: "cyc-01", base: [-170, 0.5, -44], heading: 0, speed: 18.0, label: "CYC 03" },
-  { id: "cyc-02", base: [-70, 0.5, -44], heading: 0, speed: 20.5, label: "CYC 09" },
-  { id: "cyc-03", base: [50, 0.5, -6], heading: Math.PI / 2, speed: 16.0, label: "CYC 14" },
-  { id: "cyc-04", base: [130, 0.5, 14], heading: 0, speed: 19.2, label: "CYC 27" },
-];
+  // Cleanup old cooldown entries (> 15s old)
+  for (const [key, timestamp] of recentCloseCallEvents.entries()) {
+    if (currentTimeSec - timestamp > 15.0) {
+      recentCloseCallEvents.delete(key);
+    }
+  }
 
-// Extract full set of perception-tracked agents and run safety checks
+  // Only evaluate pairs where at least one is in the zone and both are within active distance
+  const candidateAgents = agents.filter((a) => a.inZone || a.type === "ambulance");
+
+  for (let i = 0; i < candidateAgents.length; i++) {
+    for (let j = i + 1; j < candidateAgents.length; j++) {
+      const aA = candidateAgents[i];
+      const aB = candidateAgents[j];
+
+      // Skip identical agent ID
+      if (aA.id === aB.id) continue;
+
+      // Skip if neither is the ambulance and neither has high closing speed
+      const hasEmergency = aA.type === "ambulance" || aB.type === "ambulance";
+      const interDist = Math.hypot(aA.position[0] - aB.position[0], aA.position[2] - aB.position[2]);
+
+      // Broad-phase distance cull (must be within 65m)
+      if (interDist > 65.0) continue;
+
+      const ttcRes = computePairwiseTtc(
+        aA.position,
+        aA.velocity,
+        aA.collisionRadius,
+        aB.position,
+        aB.velocity,
+        aB.collisionRadius,
+        { id: aA.id, laneIndex: aA.laneIndex, isYielding: aA.isYielding },
+        { id: aB.id, laneIndex: aB.laneIndex, isYielding: aB.isYielding }
+      );
+
+      if (ttcRes.isHazard && ttcRes.ttcSec !== null) {
+        // Mark warning flags on both agents
+        aA.hasTtcWarning = true;
+        aB.hasTtcWarning = true;
+        aA.ttcSec = aA.ttcSec !== null ? Math.min(aA.ttcSec, ttcRes.ttcSec) : ttcRes.ttcSec;
+        aB.ttcSec = aB.ttcSec !== null ? Math.min(aB.ttcSec, ttcRes.ttcSec) : ttcRes.ttcSec;
+
+        if (aA.statusBadge !== "ALERT") {
+          aA.statusBadge = "ALERT";
+          aA.headline = `TTC Alert: ${ttcRes.ttcSec}s to ${aB.label}`;
+        }
+        if (aB.statusBadge !== "ALERT") {
+          aB.statusBadge = "ALERT";
+          aB.headline = `TTC Alert: ${ttcRes.ttcSec}s to ${aA.label}`;
+        }
+
+        const pairKey = [aA.id, aB.id].sort().join("<->");
+        const lastRecorded = recentCloseCallEvents.get(pairKey);
+
+        // Deduplicate close calls: 5-second cooldown per unique pair
+        if (lastRecorded === undefined || currentTimeSec - lastRecorded > 5.0) {
+          recentCloseCallEvents.set(pairKey, currentTimeSec);
+          newCloseCallsCount++;
+        }
+
+        activeAlerts.push({
+          id: `ttc-${pairKey}`,
+          agentId1: aA.id,
+          agentId2: aB.id,
+          label1: aA.label,
+          label2: aB.label,
+          ttcSec: ttcRes.ttcSec,
+          closingSpeedKmh: ttcRes.closingSpeed,
+          distanceMeters: Math.round(ttcRes.distance * 4.5),
+          severity: ttcRes.ttcSec < 1.6 ? "critical" : "warning",
+          detail: hasEmergency
+            ? aA.isYielding || aB.isYielding
+              ? "Emergency vehicle approaching · Yielding in progress"
+              : "Obstruction in emergency preemption path"
+            : "Intersection trajectory conflict",
+        });
+      }
+    }
+  }
+
+  return {
+    activeAlerts,
+    newCloseCallsCount,
+  };
+}
+
+/**
+ * Extracts perception state for the full city simulation.
+ */
 export function extractPerceptionState(
   sim: CorridorSimulation,
   zoneCenter: [number, number],
-  zoneRadius: number
+  zoneRadius: number,
+  allCityAgents?: PerceptionAgent[]
 ): {
   agents: PerceptionAgent[];
   activeAlerts: TtcAlert[];
   ambulanceAgent: PerceptionAgent;
+  newCloseCalls: number;
 } {
   const v = sim.vehicle;
   const junctions = sim.junctions;
   const t = sim.elapsedTime;
 
-  // Velocity vectors
+  // Emergency Lead Ambulance
   const ambVx = Math.cos(v.heading) * v.speed;
   const ambVz = Math.sin(v.heading) * v.speed;
   const ambPos: [number, number, number] = [v.x, 0.8, v.z];
-
   const ambDistToCenter = Math.hypot(v.x - zoneCenter[0], v.z - zoneCenter[1]);
 
-  // Next junction info for ambulance
-  const nextJunctionNode = CORRIDOR_JUNCTION_NODES[v.currentJunctionIndex] || CORRIDOR_JUNCTION_NODES[0];
+  const nextJNode = CORRIDOR_JUNCTION_NODES[v.currentJunctionIndex] || CORRIDOR_JUNCTION_NODES[0];
   const nextJunction = junctions[v.currentJunctionIndex] || junctions[0];
-  const distToNextJunctionM = Math.max(0, Math.round((nextJunctionNode.routeDistance - v.distanceTraveled) * 4.5));
+  const distToNextJM = Math.max(0, Math.round((nextJNode.routeDistance - v.distanceTraveled) * 4.5));
 
   let ambSignalCountdown = "CLEAR CORRIDOR";
   if (nextJunction.preemptionState === "EMERGENCY_GREEN") {
@@ -216,7 +366,7 @@ export function extractPerceptionState(
     roll: v.roll,
     statusBadge: "SAFE",
     headline: "Leading emergency corridor",
-    explanation: `Active preemption engaged. Approaching ${nextJunctionNode.name} (${distToNextJunctionM} m).`,
+    explanation: `Active preemption engaged. Approaching ${nextJNode.name} (${distToNextJM} m).`,
     distToZoneCenter: ambDistToCenter,
     distToAmbulance: 0,
     inZone: ambDistToCenter <= zoneRadius,
@@ -224,260 +374,133 @@ export function extractPerceptionState(
     stoppedAtSignal: false,
     followingText: "none (lead vehicle)",
     followingGapMeters: 0,
-    nextJunctionName: nextJunctionNode.name,
-    distToNextJunctionM,
+    nextJunctionName: nextJNode.name,
+    distToNextJunctionM: distToNextJM,
     signalCountdown: ambSignalCountdown,
-    approachName: "west approach",
+    approachName: "corridor mainline",
     turnIntent: { straight: 95, left: 3, right: 2, yielding: 0 },
     dimensions: [5.2, 2.2, 2.2],
+    collisionRadius: 2.2,
     hasTtcWarning: false,
     ttcSec: null,
     color: "#ea580c",
+    laneIndex: 1,
   };
 
   const agents: PerceptionAgent[] = [ambulanceAgent];
-  const activeAlerts: TtcAlert[] = [];
 
-  // 1. Process Traffic Cars
-  sim.cars.forEach((car, idx) => {
-    const carVx = Math.cos(car.heading) * car.speed;
-    const carVz = Math.sin(car.heading) * car.speed;
-    const carPos: [number, number, number] = [car.x, 0.6, car.z];
-
-    const distToCenter = Math.hypot(car.x - zoneCenter[0], car.z - zoneCenter[1]);
-    const inZone = distToCenter <= zoneRadius;
-    const distToAmbulance = Math.hypot(car.x - v.x, car.z - v.z);
-
-    // Find closest junction ahead
-    let closestJunction = CORRIDOR_JUNCTION_NODES[0];
-    let minJunctionDist = 9999;
-    CORRIDOR_JUNCTION_NODES.forEach((jn) => {
-      const d = Math.hypot(car.x - jn.x, car.z - jn.z);
-      if (d < minJunctionDist) {
-        minJunctionDist = d;
-        closestJunction = jn;
-      }
-    });
-
-    const junctionObj = junctions.find((j) => j.id === closestJunction.id);
-    let signalCountdown = "green · free flow";
-    if (junctionObj) {
-      if (junctionObj.preemptionState === "EMERGENCY_GREEN") {
-        signalCountdown = "preempted · green in 0.0 s";
-      } else if (junctionObj.signals.ambulanceApproach === "red") {
-        const remaining = Math.max(0, 14 - junctionObj.signals.normalTimer);
-        signalCountdown = `red · green in ${remaining.toFixed(1)} s`;
-      } else {
-        const remaining = Math.max(0, 11 - junctionObj.signals.normalTimer);
-        signalCountdown = `green · red in ${remaining.toFixed(1)} s`;
-      }
+  // If external city agents are provided, use them; otherwise extract from corridor sim cars
+  if (allCityAgents && allCityAgents.length > 0) {
+    for (const ca of allCityAgents) {
+      if (ca.id === ambulanceAgent.id) continue;
+      ca.distToZoneCenter = Math.hypot(ca.position[0] - zoneCenter[0], ca.position[2] - zoneCenter[1]);
+      ca.distToAmbulance = Math.hypot(ca.position[0] - v.x, ca.position[2] - v.z);
+      ca.inZone = ca.distToZoneCenter <= zoneRadius;
+      agents.push(ca);
     }
+  } else {
+    // Process corridor simulation traffic cars
+    sim.cars.forEach((car, idx) => {
+      const carVx = Math.cos(car.heading) * car.speed;
+      const carVz = Math.sin(car.heading) * car.speed;
+      const carPos: [number, number, number] = [car.x, 0.6, car.z];
 
-    const turnIntent = computeAgentIntent(car, junctionObj);
+      const distToCenter = Math.hypot(car.x - zoneCenter[0], car.z - zoneCenter[1]);
+      const inZone = distToCenter <= zoneRadius;
+      const distToAmb = Math.hypot(car.x - v.x, car.z - v.z);
 
-    let statusBadge: "SAFE" | "WAIT" | "ALERT" = "SAFE";
-    let headline = "Moving in corridor";
-    let explanation = `Cruising eastbound at ${Math.round(car.speed * 2.8)} km/h. Clear of conflicts.`;
+      let closestJn = CORRIDOR_JUNCTION_NODES[0];
+      let minJnDist = 9999;
+      CORRIDOR_JUNCTION_NODES.forEach((jn) => {
+        const d = Math.hypot(car.x - jn.x, car.z - jn.z);
+        if (d < minJnDist) {
+          minJnDist = d;
+          closestJn = jn;
+        }
+      });
 
-    const carAheadId = idx > 0 ? `CAR ${String(idx).padStart(2, "0")}` : "lead";
-    const gapM = Math.round(10 + (idx % 4) * 4);
-
-    if (car.isYielding) {
-      statusBadge = "WAIT";
-      headline = "Yielding to corridor";
-      explanation = `Shifted to shoulder lane (${gapM} m clear). Yielding to approaching AMB 01.`;
-    } else if (car.stoppedAtSignal) {
-      statusBadge = "WAIT";
-      headline = "Holding at red";
-      explanation = `Stopped 14 m before the line. ${signalCountdown}, then it will go straight.`;
-    } else if (minJunctionDist < 8) {
-      statusBadge = "SAFE";
-      headline = "Crossing the junction";
-      explanation = `Inside the junction at ${Math.round(car.speed * 2.8)} km/h, clear.`;
-    } else if (minJunctionDist < 18 && car.speed > 8) {
-      statusBadge = "SAFE";
-      headline = "Leaving the junction";
-      explanation = `Clear of the intersection, eastbound at ${Math.round(car.speed * 2.8)} km/h.`;
-    } else if (idx % 3 === 0 && car.speed < 4) {
-      statusBadge = "WAIT";
-      headline = `Queued behind ${carAheadId}`;
-      explanation = `Waiting ${gapM} m behind the vehicle ahead. ${signalCountdown}.`;
-    }
-
-    // Pairwise TTC Check against Emergency Vehicle
-    let hasTtcWarning = false;
-    let ttcSec: number | null = null;
-
-    if (inZone && distToAmbulance < 65) {
-      const ttcRes = computePairwiseTtc(
-        carPos,
-        [carVx, 0, carVz],
-        car.collisionRadius,
-        ambPos,
-        [ambVx, 0, ambVz],
-        v.collisionRadius
-      );
-
-      if (ttcRes.isClosing && ttcRes.ttcSec !== null && ttcRes.ttcSec <= 2.5) {
-        hasTtcWarning = true;
-        ttcSec = ttcRes.ttcSec;
-        statusBadge = "ALERT";
-        headline = "Yielding to Ambulance";
-        explanation = `TTC ${ttcRes.ttcSec}s to AMB 01. Pulling into left shoulder.`;
-
-        const alert: TtcAlert = {
-          id: `ttc-${car.id}-amb`,
-          agentId1: car.id,
-          agentId2: ambulanceAgent.id,
-          label1: `CAR ${String(idx + 1).padStart(2, "0")}`,
-          label2: "AMB 01",
-          ttcSec: ttcRes.ttcSec,
-          closingSpeedKmh: ttcRes.closingSpeed,
-          distanceMeters: Math.round(ttcRes.distance * 4.5),
-          severity: ttcRes.ttcSec < 1.6 ? "critical" : "warning",
-          detail: car.isYielding ? "Yielding maneuver in progress" : "Obstruction detected ahead of corridor",
-        };
-        activeAlerts.push(alert);
+      const jObj = junctions.find((j) => j.id === closestJn.id);
+      let signalCountdown = "green · free flow";
+      if (jObj) {
+        if (jObj.preemptionState === "EMERGENCY_GREEN") {
+          signalCountdown = "preempted · green in 0.0 s";
+        } else if (jObj.signals.ambulanceApproach === "red") {
+          const rem = Math.max(0, 14 - jObj.signals.normalTimer);
+          signalCountdown = `red · green in ${rem.toFixed(1)} s`;
+        } else {
+          const rem = Math.max(0, 11 - jObj.signals.normalTimer);
+          signalCountdown = `green · red in ${rem.toFixed(1)} s`;
+        }
       }
-    }
 
-    agents.push({
-      id: car.id,
-      type: "car",
-      label: `CAR ${String(idx + 1).padStart(2, "0")}`,
-      typeLabel: "vehicle",
-      position: carPos,
-      velocity: [carVx, 0, carVz],
-      speedKmh: Math.round(car.speed * 2.8),
-      heading: car.heading,
-      roll: car.roll,
-      statusBadge,
-      headline,
-      explanation,
-      distToZoneCenter: distToCenter,
-      distToAmbulance,
-      inZone,
-      isYielding: car.isYielding,
-      stoppedAtSignal: car.stoppedAtSignal,
-      followingText: `${carAheadId} (${gapM} m)`,
-      followingGapMeters: gapM,
-      nextJunctionName: closestJunction.name,
-      distToNextJunctionM: Math.round(minJunctionDist * 4.5),
-      signalCountdown,
-      approachName: car.heading < Math.PI / 2 ? "west approach" : "east approach",
-      turnIntent,
-      dimensions: [4.2, 1.6, 1.9],
-      hasTtcWarning,
-      ttcSec,
-      color: car.color,
+      const turnIntent = computeAgentIntent(car, jObj);
+      let statusBadge: "SAFE" | "WAIT" | "ALERT" = "SAFE";
+      let headline = "Moving in corridor";
+      let explanation = `Cruising at ${Math.round(car.speed * 2.8)} km/h. Clear of conflicts.`;
+
+      const carAheadId = idx > 0 ? `CAR ${String(idx).padStart(2, "0")}` : "lead";
+      const gapM = Math.round(10 + (idx % 4) * 4);
+
+      if (car.isYielding) {
+        statusBadge = "WAIT";
+        headline = "Yielding to corridor";
+        explanation = `Shifted to shoulder lane (${gapM} m clear). Yielding to approaching AMB 01.`;
+      } else if (car.stoppedAtSignal) {
+        statusBadge = "WAIT";
+        headline = "Holding at red";
+        explanation = `Stopped before the line. ${signalCountdown}, then it will go straight.`;
+      } else if (minJnDist < 8) {
+        statusBadge = "SAFE";
+        headline = "Crossing the junction";
+        explanation = `Inside the junction at ${Math.round(car.speed * 2.8)} km/h, clear.`;
+      } else if (minJnDist < 18 && car.speed > 8) {
+        statusBadge = "SAFE";
+        headline = "Leaving the junction";
+        explanation = `Clear of the intersection, eastbound at ${Math.round(car.speed * 2.8)} km/h.`;
+      }
+
+      agents.push({
+        id: car.id,
+        type: "car",
+        label: `CAR ${String(idx + 1).padStart(2, "0")}`,
+        typeLabel: "vehicle",
+        position: carPos,
+        velocity: [carVx, 0, carVz],
+        speedKmh: Math.round(car.speed * 2.8),
+        heading: car.heading,
+        roll: car.roll,
+        statusBadge,
+        headline,
+        explanation,
+        distToZoneCenter: distToCenter,
+        distToAmbulance: distToAmb,
+        inZone,
+        isYielding: car.isYielding,
+        stoppedAtSignal: car.stoppedAtSignal,
+        followingText: `${carAheadId} (${gapM} m)`,
+        followingGapMeters: gapM,
+        nextJunctionName: closestJn.name,
+        distToNextJunctionM: Math.round(minJnDist * 4.5),
+        signalCountdown,
+        approachName: car.heading < Math.PI / 2 ? "west approach" : "east approach",
+        turnIntent,
+        dimensions: [4.2, 1.6, 1.9],
+        collisionRadius: 2.0,
+        hasTtcWarning: false,
+        ttcSec: null,
+        color: car.color,
+        laneIndex: car.laneIndex,
+      });
     });
-  });
-
-  // 2. Process Pedestrians
-  SYNTHETIC_PEDESTRIANS.forEach((ped, pIdx) => {
-    // Oscillation along sidewalk
-    const offset = Math.sin(t * 0.8 + pIdx * 1.5) * 8;
-    const px = ped.base[0] + ped.dir[0] * offset;
-    const pz = ped.base[2] + ped.dir[1] * offset;
-    const pos: [number, number, number] = [px, 0.4, pz];
-
-    const distToCenter = Math.hypot(px - zoneCenter[0], pz - zoneCenter[1]);
-    const inZone = distToCenter <= zoneRadius;
-    const distToAmb = Math.hypot(px - v.x, pz - v.z);
-
-    const isCrossing = Math.abs(offset) < 2;
-    const headline = isCrossing ? "Crossing on walk" : (pIdx % 2 === 0 ? "On the sidewalk" : "Waiting to cross");
-    const explanation = isCrossing
-      ? "Crossing at crosswalk, clear of traffic path."
-      : (pIdx % 2 === 0
-        ? "Walking at 4 km/h, not heading into traffic."
-        : "Walk signal in about 6.0 s. Standing at curb.");
-
-    agents.push({
-      id: ped.id,
-      type: "pedestrian",
-      label: ped.label,
-      typeLabel: "pedestrian",
-      position: pos,
-      velocity: [ped.dir[0] * 1.1, 0, ped.dir[1] * 1.1],
-      speedKmh: Math.round(ped.speed),
-      heading: ped.dir[0] !== 0 ? 0 : Math.PI / 2,
-      roll: 0,
-      statusBadge: isCrossing ? "WAIT" : "SAFE",
-      headline,
-      explanation,
-      distToZoneCenter: distToCenter,
-      distToAmbulance: distToAmb,
-      inZone,
-      isYielding: false,
-      stoppedAtSignal: !isCrossing,
-      followingText: "none (pedestrian path)",
-      followingGapMeters: 12,
-      nextJunctionName: "Pedestrian Crosswalk",
-      distToNextJunctionM: Math.round(Math.abs(offset) * 2),
-      signalCountdown: isCrossing ? "walk · 8.2 s remaining" : "don't walk · 6.0 s",
-      approachName: "sidewalk node",
-      turnIntent: { straight: 92, left: 4, right: 4, yielding: 0 },
-      dimensions: [0.6, 1.8, 0.6],
-      hasTtcWarning: false,
-      ttcSec: null,
-      color: "#38bdf8",
-    });
-  });
-
-  // 3. Process Cyclists
-  SYNTHETIC_CYCLISTS.forEach((cyc, cIdx) => {
-    const cycDist = ((t * cyc.speed * 0.4 + cIdx * 60) % 350) - 150;
-    const cx = cyc.heading === 0 ? cycDist : cyc.base[0];
-    const cz = cyc.heading === 0 ? cyc.base[2] : cycDist;
-    const pos: [number, number, number] = [cx, 0.5, cz];
-
-    const distToCenter = Math.hypot(cx - zoneCenter[0], cz - zoneCenter[1]);
-    const inZone = distToCenter <= zoneRadius;
-    const distToAmb = Math.hypot(cx - v.x, cz - v.z);
-
-    agents.push({
-      id: cyc.id,
-      type: "cyclist",
-      label: cyc.label,
-      typeLabel: "bicycle",
-      position: pos,
-      velocity: [Math.cos(cyc.heading) * 4.5, 0, Math.sin(cyc.heading) * 4.5],
-      speedKmh: Math.round(cyc.speed),
-      heading: cyc.heading,
-      roll: 0,
-      statusBadge: "SAFE",
-      headline: "In bike lane",
-      explanation: `Riding in dedicated bike shoulder at ${Math.round(cyc.speed)} km/h.`,
-      distToZoneCenter: distToCenter,
-      distToAmbulance: distToAmb,
-      inZone,
-      isYielding: false,
-      stoppedAtSignal: false,
-      followingText: "none (bike path)",
-      followingGapMeters: 18,
-      nextJunctionName: "Kaloor North Lane",
-      distToNextJunctionM: 25,
-      signalCountdown: "green · 12.0 s",
-      approachName: "shoulder lane",
-      turnIntent: { straight: 88, left: 6, right: 6, yielding: 0 },
-      dimensions: [1.8, 1.4, 0.7],
-      hasTtcWarning: false,
-      ttcSec: null,
-      color: "#10b981",
-    });
-  });
-
-  // If ambulance has any active TTC alert against it, set badge to ALERT
-  if (activeAlerts.length > 0) {
-    ambulanceAgent.statusBadge = "ALERT";
-    ambulanceAgent.hasTtcWarning = true;
-    ambulanceAgent.ttcSec = activeAlerts[0].ttcSec;
   }
+
+  // 10. Run Safety Engine & TTC evaluation across candidate pairs
+  const { activeAlerts, newCloseCallsCount } = evaluateZoneSafety(agents, t);
 
   return {
     agents,
     activeAlerts,
     ambulanceAgent,
+    newCloseCalls: newCloseCallsCount,
   };
 }
