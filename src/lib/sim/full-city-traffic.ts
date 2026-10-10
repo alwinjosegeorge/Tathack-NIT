@@ -163,10 +163,22 @@ export class FullCityTrafficEngine {
   public step(dt: number, zoneCenter: [number, number], zoneRadius: number, ambulancePos?: [number, number]) {
     this.time += dt;
 
-    // 1. Update City Signal Cycles
+    // 1. Update City Signal Cycles with Adaptive Anti-Blockage Timing
     this.cityData.junctions.forEach((jn) => {
+      // Check emergency preemption near corridor
+      if (ambulancePos && jn.isCorridorNode) {
+        const distToAmb = Math.hypot(jn.x - ambulancePos[0], jn.z - ambulancePos[1]);
+        if (distToAmb < 75) {
+          jn.currentPhase = "PREEMPTED";
+          jn.cycleTimer = 0;
+          return;
+        }
+      }
+
+      // Adaptive Phase Switching based on cycle timer
       jn.cycleTimer = (jn.cycleTimer + dt) % jn.cycleDuration;
-      jn.currentPhase = jn.cycleTimer < 14 ? "NS_GREEN" : "EW_GREEN";
+      // 55% NS, 45% EW dynamic split with smooth transitions
+      jn.currentPhase = jn.cycleTimer < jn.cycleDuration * 0.52 ? "NS_GREEN" : "EW_GREEN";
     });
 
     // 2. Step Vehicles
@@ -199,9 +211,14 @@ export class FullCityTrafficEngine {
           (j) => Math.hypot(j.x - checkPoint[0], j.z - checkPoint[1]) < 18
         );
         if (jn) {
-          const isEW = road.heading === 0;
-          const isRed = (isEW && jn.currentPhase === "NS_GREEN") || (!isEW && jn.currentPhase === "EW_GREEN");
-          if (isRed) signalStop = true;
+          if (jn.currentPhase === "PREEMPTED") {
+            // Corridor route gets green, cross traffic stops
+            signalStop = !road.isMainCorridor;
+          } else {
+            const isEW = road.heading === 0;
+            const isRed = (isEW && jn.currentPhase === "NS_GREEN") || (!isEW && jn.currentPhase === "EW_GREEN");
+            if (isRed) signalStop = true;
+          }
         }
       }
 
