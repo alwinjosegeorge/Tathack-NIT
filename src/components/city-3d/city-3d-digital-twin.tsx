@@ -170,7 +170,7 @@ export function City3DDigitalTwin({
     <div
       style={{ height: isFullscreen ? "100vh" : height }}
       className={cn(
-        "relative w-full overflow-hidden bg-slate-950 select-none rounded-2xl transition-all",
+        "relative w-full overflow-hidden bg-slate-950 select-none rounded-3xl transition-all glow-border-intense",
         isFullscreen && "fixed inset-0 z-50 rounded-none",
         className
       )}
@@ -189,7 +189,7 @@ export function City3DDigitalTwin({
 
       {/* Main Tab Navigation Bar */}
       <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 pointer-events-auto max-w-[95%]">
-        <div className="bg-slate-900/90 backdrop-blur-md rounded-2xl border border-slate-700/60 shadow-xl p-1.5 flex flex-wrap items-center gap-1">
+        <div className="bg-slate-900/90 backdrop-blur-md rounded-2xl border border-indigo-400/35 shadow-[0_0_25px_-3px_rgba(139,92,246,0.35)] p-1.5 flex flex-wrap items-center gap-1 dot-pattern-card">
           <button
             onClick={() => setActiveTab("traffic")}
             className={cn(

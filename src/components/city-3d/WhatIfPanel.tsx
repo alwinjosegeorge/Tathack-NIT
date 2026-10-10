@@ -108,7 +108,7 @@ export function WhatIfPanel({ incident, engine, onClose }: WhatIfPanelProps) {
 
   return (
     <div className="absolute top-0 right-0 h-full w-80 z-20 pointer-events-auto flex flex-col">
-      <div className="flex-1 overflow-y-auto bg-slate-900/95 backdrop-blur-md border-l border-slate-700/50 shadow-2xl flex flex-col">
+      <div className="flex-1 overflow-y-auto bg-slate-900/95 backdrop-blur-md border-l border-indigo-400/35 shadow-[0_0_30px_-4px_rgba(139,92,246,0.3)] flex flex-col dot-pattern-card">
         {/* Header */}
         <div className="p-4 border-b border-slate-700/50 flex-shrink-0">
           <div className="flex items-center justify-between mb-2">

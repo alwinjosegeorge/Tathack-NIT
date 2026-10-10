@@ -119,10 +119,15 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [voiceModalOpen, setVoiceModalOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-screen bg-background text-foreground dot-canvas relative selection:bg-primary/20">
+      {/* Ambient background glow accents matching dot & border effect */}
+      <div className="fixed -top-48 -right-48 w-96 h-96 rounded-full bg-indigo-500/10 blur-3xl pointer-events-none -z-10" />
+      <div className="fixed top-1/2 -left-48 w-96 h-96 rounded-full bg-purple-600/10 blur-3xl pointer-events-none -z-10" />
+      <div className="fixed -bottom-48 right-1/4 w-96 h-96 rounded-full bg-violet-500/10 blur-3xl pointer-events-none -z-10" />
+
       {/* Desktop sidebar */}
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-[248px] flex-col border-r border-border bg-card lg:flex">
-        <div className="flex h-16 items-center gap-3 border-b border-border px-6">
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-[248px] flex-col border-r border-border/80 bg-card/90 backdrop-blur-xl glow-border dot-pattern-card lg:flex">
+        <div className="flex h-16 items-center gap-3 border-b border-border/70 px-6">
           <div className="grid size-9 place-items-center rounded-xl bg-primary text-primary-foreground shadow-sm">
             <span className="font-display text-sm font-bold">C</span>
           </div>
@@ -184,7 +189,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </aside>
 
       {/* Top bar */}
-      <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-3 border-b border-border bg-background/80 px-4 backdrop-blur-xl lg:pl-[264px] lg:pr-6">
+      <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-3 border-b border-border/80 bg-background/85 px-4 backdrop-blur-xl lg:pl-[264px] lg:pr-6">
         <div className="flex min-w-0 items-center gap-3">
           <button
             onClick={() => setMobileOpen(true)}

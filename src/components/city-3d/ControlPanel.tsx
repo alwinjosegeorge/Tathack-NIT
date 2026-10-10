@@ -107,7 +107,7 @@ export function ControlPanel({
       <div className="absolute top-0 left-0 right-0 z-10 pointer-events-none">
         <div className="flex items-start justify-between p-4 gap-3">
           {/* Logo */}
-          <div className="pointer-events-auto bg-slate-900/85 backdrop-blur-md rounded-xl px-5 py-3 border border-slate-700/50 shadow-lg flex-shrink-0">
+          <div className="pointer-events-auto bg-slate-900/90 backdrop-blur-md rounded-2xl px-5 py-3 border border-indigo-400/30 shadow-[0_0_20px_-3px_rgba(139,92,246,0.3)] flex-shrink-0 dot-pattern-card">
             <div className="flex items-center gap-2">
               <Activity className="w-5 h-5 text-cyan-400" />
               <span className="text-white font-bold text-lg tracking-wide">CivicPulse</span>
@@ -121,7 +121,7 @@ export function ControlPanel({
           </div>
 
           {/* Signal indicators */}
-          <div className="pointer-events-auto bg-slate-900/85 backdrop-blur-md rounded-xl px-4 py-3 border border-slate-700/50 shadow-lg">
+          <div className="pointer-events-auto bg-slate-900/90 backdrop-blur-md rounded-2xl px-4 py-3 border border-indigo-400/30 shadow-[0_0_20px_-3px_rgba(139,92,246,0.3)] dot-pattern-card">
             <div className="flex items-center gap-3">
               <span className="text-slate-400 text-xs font-medium uppercase tracking-wider">Signals</span>
               <div className="flex gap-3">
@@ -151,7 +151,7 @@ export function ControlPanel({
           </div>
 
           {/* Sim control mini */}
-          <div className="pointer-events-auto bg-slate-900/85 backdrop-blur-md rounded-xl px-4 py-3 border border-slate-700/50 shadow-lg flex-shrink-0">
+          <div className="pointer-events-auto bg-slate-900/90 backdrop-blur-md rounded-2xl px-4 py-3 border border-indigo-400/30 shadow-[0_0_20px_-3px_rgba(139,92,246,0.3)] flex-shrink-0 dot-pattern-card">
             <div className="flex items-center gap-2">
               <button
                 onClick={handlePauseResume}
@@ -189,7 +189,7 @@ export function ControlPanel({
       {/* Bottom control panel */}
       <div className="absolute bottom-0 left-0 right-0 z-10 pointer-events-none">
         <div className="flex items-end justify-center p-4">
-          <div className="pointer-events-auto bg-slate-900/90 backdrop-blur-md rounded-2xl border border-slate-700/50 shadow-2xl p-4 w-full max-w-3xl">
+          <div className="pointer-events-auto bg-slate-900/90 backdrop-blur-md rounded-3xl border border-indigo-400/35 shadow-[0_0_35px_-4px_rgba(139,92,246,0.35)] p-4 w-full max-w-3xl dot-pattern-card">
             {/* Main controls row */}
             <div className="flex items-center gap-3 flex-wrap justify-between">
 

@@ -5,16 +5,21 @@ export function GlassCard({
   children,
   className,
   as: Comp = "div",
+  variant = "default",
   ...rest
 }: {
   children: ReactNode;
   className?: string;
   as?: "div" | "section" | "article";
+  variant?: "default" | "indigo" | "subtle";
 } & React.HTMLAttributes<HTMLDivElement>) {
   return (
     <Comp
       className={cn(
-        "rounded-3xl border border-border bg-card p-5 soft-shadow",
+        "rounded-3xl p-5 transition-all duration-300 relative",
+        variant === "indigo"
+          ? "indigo-dot-surface"
+          : "border border-border/85 bg-card glow-border dot-pattern-card",
         className,
       )}
       {...rest}
@@ -43,7 +48,7 @@ export function MetricTile({
     primary: "text-primary",
   }[tone];
   return (
-    <div className="rounded-2xl border border-border bg-card p-4">
+    <div className="rounded-2xl border border-border/80 bg-card p-4 glow-border dot-pattern-card transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg">
       <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
       <p className={cn("mt-2 font-display text-2xl font-semibold", toneColor)}>{value}</p>
       {hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
